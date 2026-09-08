@@ -101,6 +101,75 @@ export async function getWorkflow(workflowId: string): Promise<KeeperHubWorkflow
   return asRecord(body, "getWorkflow");
 }
 
+/** GET /api/workflows — lists the organization's workflows. Used to discover a workflow by name when KEEPERHUB_WORKFLOW_ID isn't set, rather than requiring the id up front. */
+export async function listWorkflows(): Promise<KeeperHubWorkflow[]> {
+  const body = await keeperFetch("/api/workflows");
+  if (Array.isArray(body)) return body as KeeperHubWorkflow[];
+  if (body && typeof body === "object") {
+    const record = body as Record<string, unknown>;
+    for (const key of ["workflows", "data", "items", "results"]) {
+      if (Array.isArray(record[key])) return record[key] as KeeperHubWorkflow[];
+    }
+  }
+  throw new KeeperHubError(
+    "Unexpected KeeperHub response shape for workflow list — expected an array (checked top level and workflows/data/items/results).",
+    200,
+    body,
+  );
+}
+
+/**
+ * Resolves which workflow id to use for preflight/execute:
+ *   1. KEEPERHUB_WORKFLOW_ID env var, if set — always wins, no API call needed.
+ *   2. Otherwise, list the org's workflows via the real API. If exactly one
+ *      exists, use it. If KEEPERHUB_WORKFLOW_NAME is set, match by name
+ *      (case-insensitive). If neither narrows it to one workflow, throw with
+ *      the real list of what was found so the caller can pick the right id.
+ */
+export async function resolveWorkflowId(): Promise<{ workflowId: string; workflow?: KeeperHubWorkflow }> {
+  const configured = process.env.KEEPERHUB_WORKFLOW_ID;
+  if (configured) return { workflowId: configured };
+
+  const workflows = await listWorkflows();
+
+  if (workflows.length === 0) {
+    throw new KeeperHubError(
+      "KEEPERHUB_WORKFLOW_ID is not set, and this KeeperHub organization has no workflows to discover. Create one in the KeeperHub dashboard first.",
+      200,
+    );
+  }
+
+  const targetName = process.env.KEEPERHUB_WORKFLOW_NAME?.trim().toLowerCase();
+  const candidates = targetName
+    ? workflows.filter((w) => typeof w.name === "string" && w.name.toLowerCase() === targetName)
+    : workflows;
+
+  if (candidates.length === 1) {
+    const workflow = candidates[0];
+    const id = firstString(workflow, ["id", "workflowId", "_id"]);
+    if (!id) {
+      throw new KeeperHubError(
+        "Found exactly one matching KeeperHub workflow, but its response didn't contain a recognizable id field.",
+        200,
+        workflow,
+      );
+    }
+    return { workflowId: id, workflow };
+  }
+
+  const summary = workflows
+    .map((w) => `${firstString(w, ["name"]) ?? "(unnamed)"} [${firstString(w, ["id", "workflowId", "_id"]) ?? "no id"}]`)
+    .join(", ");
+
+  throw new KeeperHubError(
+    candidates.length === 0
+      ? `KEEPERHUB_WORKFLOW_NAME "${process.env.KEEPERHUB_WORKFLOW_NAME}" didn't match any workflow. Found: ${summary}`
+      : `Multiple workflows found and none specified which to use. Set KEEPERHUB_WORKFLOW_ID or KEEPERHUB_WORKFLOW_NAME. Found: ${summary}`,
+    200,
+    workflows,
+  );
+}
+
 /** POST /api/workflows/{workflowId}/execute — triggers a real execution. */
 export async function executeWorkflow(workflowId: string): Promise<{ executionId: string; raw: unknown }> {
   const body = await keeperFetch(`/api/workflows/${encodeURIComponent(workflowId)}/execute`, {

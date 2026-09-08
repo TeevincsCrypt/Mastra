@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkflow, KeeperHubError } from "@/lib/keeperhub/client";
+import { getWorkflow, resolveWorkflowId, KeeperHubError } from "@/lib/keeperhub/client";
 
 export const dynamic = "force-dynamic";
 
@@ -11,23 +11,23 @@ export const dynamic = "force-dynamic";
  * "preflight" rather than "simulation".
  */
 export async function GET() {
-  const workflowId = process.env.KEEPERHUB_WORKFLOW_ID;
-  if (!workflowId) {
-    return NextResponse.json(
-      { ok: false, error: "KEEPERHUB_WORKFLOW_ID is not configured on the server." },
-      { status: 500 },
-    );
-  }
-
   try {
+    const { workflowId } = await resolveWorkflowId();
+    // Always fetch full detail by id — the list endpoint used for discovery
+    // may only return a summary, and preflight needs the real configuration.
     const workflow = await getWorkflow(workflowId);
+    const chain = firstStringField(workflow, ["chain", "network", "targetChain"]);
     return NextResponse.json({
       ok: true,
       workflow: {
-        id: workflow.id ?? workflowId,
+        id: typeof workflow.id === "string" ? workflow.id : workflowId,
         name: typeof workflow.name === "string" ? workflow.name : undefined,
-        chain: typeof workflow.chain === "string" ? workflow.chain : undefined,
+        chain,
       },
+      // Full raw KeeperHub response — field names beyond id/name/chain
+      // aren't confirmed against documentation, so this is exposed rather
+      // than guessed at and hidden.
+      raw: workflow,
     });
   } catch (err) {
     if (err instanceof KeeperHubError) {
@@ -41,4 +41,12 @@ export async function GET() {
       { status: 500 },
     );
   }
+}
+
+function firstStringField(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const v = record[key];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return undefined;
 }

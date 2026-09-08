@@ -4,6 +4,7 @@ import {
   findExecution,
   isTerminalFailure,
   isTerminalSuccess,
+  resolveWorkflowId,
   KeeperHubError,
 } from "@/lib/keeperhub/client";
 
@@ -67,15 +68,8 @@ function errorResponse(err: unknown) {
 
 /** Trigger a real execution, then poll inline for up to ~20s before handing back "pending" for the client to keep checking via GET. */
 export async function POST() {
-  const workflowId = process.env.KEEPERHUB_WORKFLOW_ID;
-  if (!workflowId) {
-    return NextResponse.json(
-      { ok: false, error: "KEEPERHUB_WORKFLOW_ID is not configured on the server." },
-      { status: 500 },
-    );
-  }
-
   try {
+    const { workflowId } = await resolveWorkflowId();
     const { executionId } = await executeWorkflow(workflowId);
 
     for (let attempt = 0; attempt < 8; attempt++) {
