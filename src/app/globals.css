@@ -1,25 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #070a11;
-  --bg-elevated: #0b0f1a;
-  --surface: #0e1422;
-  --surface-hover: #131a2c;
-  --border: #1c2436;
-  --border-strong: #2a3550;
-  --text-primary: #e9edf6;
-  --text-secondary: #96a3c2;
-  --text-muted: #5c6788;
-  --accent: #10b981;
-  --accent-strong: #34d399;
-  --accent-dim: rgba(16, 185, 129, 0.12);
-  --wayfinder: #a78bfa;
-  --wayfinder-dim: rgba(167, 139, 250, 0.12);
-  --success: #34d399;
-  --success-dim: rgba(52, 211, 153, 0.12);
-  --danger: #f87171;
-  --danger-dim: rgba(248, 113, 113, 0.12);
-  --warning: #fbbf24;
+  --bg: #f6f8f7;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f1f5f4;
+  --border: #e5e9e8;
+  --border-strong: #cbd5d1;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --accent: #059669;
+  --accent-strong: #047857;
+  --accent-dim: rgba(5, 150, 105, 0.1);
+  --wayfinder: #7c3aed;
+  --wayfinder-dim: rgba(124, 58, 237, 0.1);
+  --success: #059669;
+  --success-dim: rgba(5, 150, 105, 0.1);
+  --danger: #dc2626;
+  --danger-dim: rgba(220, 38, 38, 0.08);
+  --warning: #d97706;
+  --warning-dim: rgba(217, 119, 6, 0.1);
 }
 
 @theme inline {
@@ -48,14 +49,11 @@
 
 html {
   background: var(--bg);
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background:
-    radial-gradient(1100px 520px at 12% -10%, rgba(34, 211, 238, 0.07), transparent 60%),
-    radial-gradient(900px 480px at 88% 0%, rgba(167, 139, 250, 0.06), transparent 55%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text-primary);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
@@ -68,6 +66,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
+  box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.12);
 }
 
 .card-hover {
@@ -110,7 +109,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.16), transparent);
+  background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.14), transparent);
   animation: scan 1.6s ease-in-out infinite;
 }
 

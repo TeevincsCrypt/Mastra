@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMastraStore } from "@/lib/store";
 import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/mock";
 
 const LINKS = [
-  { href: "/", label: "Dashboard" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/workflow", label: "Workflow Review" },
   { href: "/execution", label: "Execution" },
   { href: "/audit", label: "Audit Trail" },
@@ -15,16 +15,17 @@ const LINKS = [
 
 export function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
   const hydrated = useHydrated();
   const connected = useMastraStore((s) => s.walletConnected);
   const address = useMastraStore((s) => s.walletAddress);
   const connectWallet = useMastraStore((s) => s.connectWallet);
   const disconnectWallet = useMastraStore((s) => s.disconnectWallet);
 
-  // The landing page (root route, disconnected) is a self-contained marketing
-  // page with its own Connect Wallet CTAs and no other useful destinations
-  // pre-connect, so skip the persistent app toolbar there.
-  if (hydrated && !connected && pathname === "/") return null;
+  function handleConnect() {
+    connectWallet();
+    router.push("/dashboard");
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur">
@@ -45,7 +46,7 @@ export function Nav() {
 
           <nav className="hidden items-center gap-1 md:flex">
             {LINKS.map((link) => {
-              const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+              const active = pathname.startsWith(link.href);
               return (
                 <Link
                   key={link.href}
@@ -77,8 +78,8 @@ export function Nav() {
           </button>
         ) : (
           <button
-            onClick={connectWallet}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#052e1f] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            onClick={handleConnect}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
             Connect Wallet
           </button>

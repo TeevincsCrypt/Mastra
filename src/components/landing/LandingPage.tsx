@@ -4,16 +4,22 @@ import { useState } from "react";
 
 const GREEN = "#059669";
 
-export function LandingPage({ onConnect }: { onConnect: () => void }) {
+export function LandingPage({
+  onConnect,
+  connected = false,
+}: {
+  onConnect: () => void;
+  connected?: boolean;
+}) {
   return (
     <div className="bg-white text-slate-900">
-      <Hero onConnect={onConnect} />
+      <Hero onConnect={onConnect} connected={connected} />
       <IntegrationStrip />
       <FlowSection />
       <ApprovalSection />
       <VerifySection />
       <ExecuteSection />
-      <CtaBanner onConnect={onConnect} />
+      <CtaBanner onConnect={onConnect} connected={connected} />
       <Footer />
     </div>
   );
@@ -21,7 +27,7 @@ export function LandingPage({ onConnect }: { onConnect: () => void }) {
 
 /* ---------------------------------- Hero --------------------------------- */
 
-function Hero({ onConnect }: { onConnect: () => void }) {
+function Hero({ onConnect, connected }: { onConnect: () => void; connected: boolean }) {
   return (
     <section className="px-4 pt-10 sm:px-8">
       <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[32px] bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 px-6 pb-28 pt-12 text-center sm:px-12 sm:pt-16">
@@ -48,7 +54,7 @@ function Hero({ onConnect }: { onConnect: () => void }) {
               onClick={onConnect}
               className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              Connect Wallet
+              {connected ? "Go to Dashboard" : "Connect Wallet"}
               <ArrowIcon />
             </button>
           </div>
@@ -349,7 +355,7 @@ function ExecuteSection() {
 
 /* --------------------------------- CTA ----------------------------------- */
 
-function CtaBanner({ onConnect }: { onConnect: () => void }) {
+function CtaBanner({ onConnect, connected }: { onConnect: () => void; connected: boolean }) {
   return (
     <section className="px-4 py-16 sm:px-8">
       <div className="mx-auto max-w-5xl rounded-[32px] bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 px-8 py-14 text-center">
@@ -363,7 +369,7 @@ function CtaBanner({ onConnect }: { onConnect: () => void }) {
           onClick={onConnect}
           className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-emerald-700 transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
-          Connect Wallet
+          {connected ? "Go to Dashboard" : "Connect Wallet"}
           <ArrowIcon />
         </button>
       </div>
@@ -394,7 +400,7 @@ function Footer() {
           <FooterColumn
             title="Product"
             links={[
-              { label: "Dashboard", href: "/" },
+              { label: "Dashboard", href: "/dashboard" },
               { label: "Workflow Review", href: "/workflow" },
               { label: "Execution", href: "/execution" },
               { label: "Audit Trail", href: "/audit" },

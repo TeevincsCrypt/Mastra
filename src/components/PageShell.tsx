@@ -44,7 +44,7 @@ export function ConnectWalletPrompt({ message }: { message: string }) {
       <p className="max-w-sm text-sm text-text-secondary">{message}</p>
       <button
         onClick={connectWallet}
-        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#052e1f] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
       >
         Connect Wallet
       </button>
