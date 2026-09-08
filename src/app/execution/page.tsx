@@ -43,16 +43,25 @@ export default function ExecutionPage() {
   }
 
   const confirmed = execution.status === "confirmed";
+  const failed = execution.status === "failed";
 
   return (
     <PageShell>
       <PageHeader
         eyebrow="Execution"
         title={proposal.intent}
-        description={confirmed ? "KeeperHub executed the exact workflow you approved." : "KeeperHub is executing the exact workflow you approved — no substitutions, no surprises."}
+        description={
+          confirmed
+            ? "KeeperHub executed the exact workflow you approved."
+            : failed
+              ? "KeeperHub could not complete this execution."
+              : "KeeperHub is executing the exact workflow you approved — no substitutions, no surprises."
+        }
         action={
           confirmed ? (
             <StatusPill tone="success" dot>Transaction Confirmed ✓</StatusPill>
+          ) : failed ? (
+            <StatusPill tone="danger" dot>Execution Failed</StatusPill>
           ) : (
             <StatusPill tone="accent" dot pulse>Executing…</StatusPill>
           )
@@ -123,6 +132,39 @@ export default function ExecutionPage() {
           </div>
         </div>
       )}
+
+      {failed && (
+        <div className="fade-up mt-6 card border-danger/30 bg-danger-dim/40 px-6 py-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-danger-dim text-danger">
+            <svg width="22" height="22" viewBox="0 0 14 14" fill="none">
+              <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="mt-3 text-base font-semibold text-text-primary">Execution failed</div>
+          <p className="mx-auto mt-2 max-w-md text-sm text-danger">{execution.error ?? "KeeperHub reported a failure."}</p>
+          {(execution.keeperhubWorkflowId || execution.keeperhubExecutionId) && (
+            <p className="mt-2 font-mono text-xs text-text-muted">
+              {execution.keeperhubWorkflowId && `workflow: ${execution.keeperhubWorkflowId}`}
+              {execution.keeperhubWorkflowId && execution.keeperhubExecutionId && " · "}
+              {execution.keeperhubExecutionId && `execution: ${execution.keeperhubExecutionId}`}
+            </p>
+          )}
+          <div className="mt-6 flex justify-center gap-3">
+            <Link
+              href="/audit"
+              className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              View Audit Record
+            </Link>
+            <Link
+              href="/dashboard"
+              className="rounded-lg border border-border-strong px-5 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+            >
+              Back to Dashboard
+            </Link>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }
@@ -144,11 +186,21 @@ function StepDot({ status }: { status: ExecStepStatus }) {
       </span>
     );
   }
+  if (status === "failed") {
+    return (
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-danger-dim text-danger">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </span>
+    );
+  }
   return <span className="h-7 w-7 shrink-0 rounded-full border-2 border-border-strong" />;
 }
 
 function StepLabel({ status }: { status: ExecStepStatus }) {
   if (status === "confirmed") return <StatusPill tone="success">Confirmed</StatusPill>;
   if (status === "active") return <StatusPill tone="accent" dot pulse>Submitting…</StatusPill>;
+  if (status === "failed") return <StatusPill tone="danger">Failed</StatusPill>;
   return <StatusPill tone="neutral">Pending</StatusPill>;
 }

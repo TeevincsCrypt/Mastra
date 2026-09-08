@@ -1,4 +1,4 @@
-export type ChainId = "base" | "arbitrum" | "ethereum";
+export type ChainId = "base" | "arbitrum" | "ethereum" | "sepolia";
 
 export interface ChainMeta {
   id: ChainId;
@@ -34,25 +34,25 @@ export interface WorkflowProposal {
 
 export type SimStepStatus = "pending" | "running" | "passed" | "failed";
 
-export interface SimulationCheck {
-  label: string;
-  status: SimStepStatus;
-}
-
-export interface SimulationStepResult {
-  actionId: string;
-  status: SimStepStatus;
-  checks: SimulationCheck[];
-  gasUsed?: string;
+/**
+ * KeeperHub's documented API does not expose a standalone dry-run/simulation
+ * endpoint distinct from executing a workflow. "Preflight" here means a real
+ * GET against KeeperHub confirming the configured workflow exists, is valid,
+ * and targets the expected chain — genuinely real, just not a transaction
+ * dry-run. See src/app/api/keeperhub/preflight/route.ts.
+ */
+export interface KeeperHubWorkflowSummary {
+  id: string;
+  name?: string;
+  chain?: string;
 }
 
 export interface SimulationResult {
   status: "idle" | "running" | "passed" | "failed";
-  steps: SimulationStepResult[];
   startedAt?: number;
   finishedAt?: number;
-  totalGasEstimate?: string;
-  keeperNode?: string;
+  workflow?: KeeperHubWorkflowSummary;
+  error?: string;
 }
 
 export type ExecStepStatus = "pending" | "active" | "confirmed" | "failed";
@@ -83,5 +83,10 @@ export interface ExecutionRecord {
   amount: string;
   token: string;
   usdValue: string;
-  simulationPassed: boolean;
+  preflightPassed: boolean;
+  /** Real KeeperHub identifiers for this execution — present once real
+   * integration has run; absent for anything not backed by a live call. */
+  keeperhubWorkflowId?: string;
+  keeperhubExecutionId?: string;
+  error?: string;
 }

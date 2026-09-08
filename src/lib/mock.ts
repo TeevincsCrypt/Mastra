@@ -1,17 +1,10 @@
-import type {
-  ChainId,
-  ChainMeta,
-  ExecutionStep,
-  SimulationCheck,
-  SimulationStepResult,
-  WorkflowAction,
-  WorkflowProposal,
-} from "./types";
+import type { ChainId, ChainMeta, ExecutionStep, WorkflowAction, WorkflowProposal } from "./types";
 
 export const CHAINS: Record<ChainId, ChainMeta> = {
   base: { id: "base", name: "Base", color: "#0052FF", glow: "rgba(0,82,255,0.35)" },
   arbitrum: { id: "arbitrum", name: "Arbitrum", color: "#28A0F0", glow: "rgba(40,160,240,0.35)" },
   ethereum: { id: "ethereum", name: "Ethereum", color: "#8C8C8C", glow: "rgba(140,140,140,0.35)" },
+  sepolia: { id: "sepolia", name: "Sepolia", color: "#D97706", glow: "rgba(217,119,6,0.35)" },
 };
 
 function hex(len: number) {
@@ -90,44 +83,12 @@ export function buildUsdcBridgeProposal(): WorkflowProposal {
   };
 }
 
-const CHECKS_BY_TYPE: Record<WorkflowAction["type"], string[]> = {
-  approve: ["Spender contract verified", "Allowance amount matches proposal", "Wallet balance sufficient"],
-  bridge: ["Route matches Wayfinder proposal exactly", "Bridge contract bytecode verified", "Slippage within bounds", "No unexpected calldata"],
-  confirm: ["Destination address matches connected wallet", "Expected receive amount matches proposal"],
-};
-
-export async function runSimulation(
-  proposal: WorkflowProposal,
-  onStep: (result: SimulationStepResult, stepIndex: number) => void,
-  onCheck: (stepIndex: number, checkIndex: number, check: SimulationCheck) => void,
-): Promise<void> {
-  for (let i = 0; i < proposal.actions.length; i++) {
-    const action = proposal.actions[i];
-    const checks: SimulationCheck[] = CHECKS_BY_TYPE[action.type].map((label) => ({
-      label,
-      status: "pending",
-    }));
-    onStep({ actionId: action.id, status: "running", checks: [...checks] }, i);
-
-    for (let c = 0; c < checks.length; c++) {
-      await delay(220 + Math.random() * 180);
-      checks[c] = { ...checks[c], status: "passed" };
-      onCheck(i, c, checks[c]);
-    }
-
-    await delay(150);
-    onStep(
-      {
-        actionId: action.id,
-        status: "passed",
-        checks,
-        gasUsed: action.estimatedGas,
-      },
-      i,
-    );
-  }
-}
-
+/**
+ * Fake execution used only until the real KeeperHub execution route
+ * (src/app/api/keeperhub/execute/route.ts) replaced it in the store. Left
+ * here unused rather than deleted, since the mock engine itself is out of
+ * scope for this change.
+ */
 export async function runExecution(
   proposal: WorkflowProposal,
   onStep: (step: ExecutionStep, stepIndex: number) => void,

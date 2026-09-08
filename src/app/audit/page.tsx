@@ -94,12 +94,26 @@ function AuditRow({ record }: { record: ExecutionRecord }) {
             <Detail label="Amount" value={`${record.amount} ${record.token}`} />
             <Detail label="USD value" value={`$${record.usdValue}`} />
             <Detail label="Duration" value={`${duration}s`} />
-            <Detail label="Simulation" value={record.simulationPassed ? "Passed ✓" : "—"} />
+            <Detail label="Preflight" value={record.preflightPassed ? "Passed ✓" : "—"} />
           </div>
 
-          <div className="mb-4">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Approved by</div>
-            <div className="font-mono text-xs text-text-secondary">{record.approvedBy}</div>
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Approved by</div>
+              <div className="font-mono text-xs text-text-secondary">{record.approvedBy}</div>
+            </div>
+            {record.keeperhubWorkflowId && (
+              <div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">KeeperHub workflow ID</div>
+                <div className="font-mono text-xs text-text-secondary">{record.keeperhubWorkflowId}</div>
+              </div>
+            )}
+            {record.keeperhubExecutionId && (
+              <div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">KeeperHub execution ID</div>
+                <div className="font-mono text-xs text-text-secondary">{record.keeperhubExecutionId}</div>
+              </div>
+            )}
           </div>
 
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Execution steps</div>
@@ -115,10 +129,18 @@ function AuditRow({ record }: { record: ExecutionRecord }) {
             ))}
           </div>
 
-          <div className="mt-4 flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3">
-            <span className="text-xs font-medium text-success">Final transaction</span>
-            <span className="font-mono text-xs text-success">{record.finalTxHash}</span>
-          </div>
+          {record.status === "confirmed" && record.finalTxHash ? (
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3">
+              <span className="text-xs font-medium text-success">Final transaction</span>
+              <span className="font-mono text-xs text-success">{record.finalTxHash}</span>
+            </div>
+          ) : (
+            record.error && (
+              <div className="mt-4 rounded-lg border border-danger/30 bg-danger-dim px-4 py-3">
+                <span className="text-xs font-medium text-danger">{record.error}</span>
+              </div>
+            )
+          )}
         </div>
       )}
     </div>

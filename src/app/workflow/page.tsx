@@ -79,6 +79,7 @@ function ReviewContent() {
   const simIdle = simulation.status === "idle";
   const simRunning = simulation.status === "running";
   const simPassed = simulation.status === "passed";
+  const simFailed = simulation.status === "failed";
 
   function handleApprove() {
     approveAndExecute();
@@ -95,7 +96,7 @@ function ReviewContent() {
       <PageHeader
         eyebrow="Workflow Review"
         title={proposal.intent}
-        description="Wayfinder proposed this workflow. Review every action, contract, amount and chain before KeeperHub simulates and executes it."
+        description="Wayfinder proposed this workflow. Review every action, contract, amount and chain before KeeperHub validates and executes it."
         action={
           <div className="flex items-center gap-2">
             <StatusPill tone="wayfinder" dot>Proposed by Wayfinder</StatusPill>
@@ -103,6 +104,11 @@ function ReviewContent() {
           </div>
         }
       />
+
+      <div className="mb-4 rounded-lg border border-wayfinder/30 bg-wayfinder-dim px-4 py-2.5 text-xs text-text-secondary">
+        This proposal is Mastra&apos;s representative Wayfinder workflow — Wayfinder&apos;s live proposal API isn&apos;t wired up yet.
+        The KeeperHub preflight and execution below are real.
+      </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryStat label="Amount" value={`${proposal.amount} ${proposal.token}`} />
@@ -112,8 +118,8 @@ function ReviewContent() {
       </div>
 
       <div className="mb-8 flex flex-col gap-3">
-        {proposal.actions.map((action, i) => (
-          <ActionCard key={action.id} action={action} step={simulation.steps[i]} />
+        {proposal.actions.map((action) => (
+          <ActionCard key={action.id} action={action} reviewed={simPassed} />
         ))}
       </div>
 
@@ -125,56 +131,57 @@ function ReviewContent() {
                 <path d="M2 7.5L5.2 10.5L12 3" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            <span className="text-sm font-semibold text-text-primary">KeeperHub Simulation</span>
+            <span className="text-sm font-semibold text-text-primary">KeeperHub Preflight</span>
           </div>
-          {simRunning && (
-            <StatusPill tone="accent" dot pulse>Dry-running on {simulation.keeperNode}</StatusPill>
-          )}
-          {simPassed && <StatusPill tone="success" dot>PASSED ✓</StatusPill>}
+          {simRunning && <StatusPill tone="accent" dot pulse>Checking with KeeperHub…</StatusPill>}
+          {simPassed && <StatusPill tone="success" dot>READY ✓</StatusPill>}
+          {simFailed && <StatusPill tone="danger" dot>FAILED</StatusPill>}
         </div>
 
         <div className="px-6 py-5">
           {simIdle && (
             <div className="flex flex-col items-center gap-3 py-6 text-center">
               <p className="max-w-sm text-sm text-text-secondary">
-                KeeperHub will dry-run this exact workflow against live chain state before you approve anything.
+                KeeperHub will confirm the configured workflow is real, reachable, and targets the expected chain
+                before you can approve anything. This is a genuine API call, not a transaction dry-run — KeeperHub
+                doesn&apos;t expose one.
               </p>
               <button
                 onClick={runKeeperSimulation}
                 className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
-                Run KeeperHub Simulation
+                Run KeeperHub Preflight
               </button>
             </div>
           )}
 
-          {(simRunning || simPassed) && (
-            <div className="flex flex-col gap-4">
-              {proposal.actions.map((action, i) => {
-                const step = simulation.steps[i];
-                return (
-                  <div key={action.id}>
-                    <div className="mb-1.5 flex items-center gap-2 text-sm font-medium text-text-primary">
-                      <StepStatusIcon status={step?.status ?? "pending"} />
-                      {action.title}
-                    </div>
-                    <div className="ml-6 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
-                      {(step?.checks ?? []).map((check) => (
-                        <div key={check.label} className="flex items-center gap-2 text-xs text-text-secondary">
-                          <StepStatusIcon status={check.status} small />
-                          {check.label}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+          {simRunning && (
+            <div className="flex items-center justify-center gap-3 py-6 text-center text-sm text-text-secondary">
+              <span className="h-4 w-4 shrink-0 rounded-full border-2 border-accent border-t-transparent spin-slow" />
+              Calling KeeperHub…
+            </div>
+          )}
 
-              {simPassed && (
-                <div className="mt-2 flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3">
-                  <span className="text-sm font-medium text-success">All checks passed · estimated total gas {simulation.totalGasEstimate}</span>
-                </div>
-              )}
+          {simPassed && (
+            <div className="flex flex-col gap-2">
+              <PreflightRow label="Workflow ID" value={simulation.workflow?.id ?? "—"} mono />
+              <PreflightRow label="Name" value={simulation.workflow?.name ?? "—"} />
+              <PreflightRow label="Chain" value={simulation.workflow?.chain ?? "—"} />
+              <div className="mt-2 flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3">
+                <span className="text-sm font-medium text-success">KeeperHub confirmed this workflow is ready to execute.</span>
+              </div>
+            </div>
+          )}
+
+          {simFailed && (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <p className="max-w-sm text-sm text-danger">{simulation.error ?? "KeeperHub preflight failed."}</p>
+              <button
+                onClick={runKeeperSimulation}
+                className="rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-accent/50"
+              >
+                Retry Preflight
+              </button>
             </div>
           )}
         </div>
@@ -208,7 +215,7 @@ function SummaryStat({ label, value, mono }: { label: string; value: string; mon
   );
 }
 
-function ActionCard({ action, step }: { action: WorkflowAction; step?: { status: SimStepStatus } }) {
+function ActionCard({ action, reviewed }: { action: WorkflowAction; reviewed?: boolean }) {
   return (
     <div className="card px-5 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -223,7 +230,7 @@ function ActionCard({ action, step }: { action: WorkflowAction; step?: { status:
         </div>
         <div className="flex items-center gap-2">
           <ChainBadge chain={action.chain} size="sm" />
-          {step && <StepStatusIcon status={step.status} />}
+          {reviewed && <StepStatusIcon status="passed" />}
         </div>
       </div>
 
@@ -255,6 +262,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="flex items-center gap-1.5">
       <span className="text-text-muted">{label}:</span>
       {children}
+    </div>
+  );
+}
+
+function PreflightRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between border-b border-border py-2 text-sm last:border-b-0">
+      <span className="text-text-muted">{label}</span>
+      <span className={`text-text-primary ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

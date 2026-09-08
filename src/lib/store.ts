@@ -1,17 +1,26 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import {
-  buildUsdcBridgeProposal,
-  fakeAddress,
-  runExecution,
-  runSimulation,
-} from "./mock";
-import type {
-  ExecutionRecord,
-  ExecutionStep,
-  SimulationResult,
-  WorkflowProposal,
-} from "./types";
+import { buildUsdcBridgeProposal, fakeAddress } from "./mock";
+import type { ExecutionRecord, ExecutionStep, SimulationResult, WorkflowProposal } from "./types";
+
+interface KeeperHubExecuteResponse {
+  ok: boolean;
+  workflowId?: string;
+  executionId?: string;
+  status?: "completed" | "failed" | "pending";
+  transactionHashes?: string[];
+  error?: string;
+}
+
+interface KeeperHubPreflightResponse {
+  ok: boolean;
+  workflow?: { id: string; name?: string; chain?: string };
+  error?: string;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 interface MastraState {
   walletConnected: boolean;
@@ -28,6 +37,9 @@ interface MastraState {
     startedAt?: number;
     finishedAt?: number;
     finalTxHash?: string;
+    keeperhubWorkflowId?: string;
+    keeperhubExecutionId?: string;
+    error?: string;
   };
 
   auditTrail: ExecutionRecord[];
@@ -50,7 +62,7 @@ export const useMastraStore = create<MastraState>()(
       proposal: null,
       proposalStatus: "none",
 
-      simulation: { status: "idle", steps: [] },
+      simulation: { status: "idle" },
 
       execution: { status: "idle", steps: [] },
 
@@ -69,7 +81,7 @@ export const useMastraStore = create<MastraState>()(
           walletAddress: null,
           proposal: null,
           proposalStatus: "none",
-          simulation: { status: "idle", steps: [] },
+          simulation: { status: "idle" },
           execution: { status: "idle", steps: [] },
         });
       },
@@ -80,55 +92,58 @@ export const useMastraStore = create<MastraState>()(
           set({
             proposal: buildUsdcBridgeProposal(),
             proposalStatus: "ready",
-            simulation: { status: "idle", steps: [] },
+            simulation: { status: "idle" },
             execution: { status: "idle", steps: [] },
           });
         }, 1100);
       },
 
+      // Real KeeperHub preflight: GET /api/keeperhub/preflight confirms the
+      // configured workflow exists and reports what it targets. This is not
+      // a transaction dry-run — KeeperHub's API doesn't expose one — so it
+      // is deliberately not called "simulation" anywhere past this point.
       runKeeperSimulation: async () => {
-        const proposal = get().proposal;
-        if (!proposal) return;
-        set({
-          simulation: {
-            status: "running",
-            steps: proposal.actions.map((a) => ({ actionId: a.id, status: "pending", checks: [] })),
-            startedAt: Date.now(),
-            keeperNode: "keeper-node-07.us-east",
-          },
-        });
+        set({ simulation: { status: "running", startedAt: Date.now() } });
 
-        await runSimulation(
-          proposal,
-          (result, idx) => {
-            set((state) => {
-              const steps = [...state.simulation.steps];
-              steps[idx] = result;
-              return { simulation: { ...state.simulation, steps } };
-            });
-          },
-          (stepIdx, checkIdx, check) => {
-            set((state) => {
-              const steps = [...state.simulation.steps];
-              const step = { ...steps[stepIdx], checks: [...steps[stepIdx].checks] };
-              step.checks[checkIdx] = check;
-              steps[stepIdx] = step;
-              return { simulation: { ...state.simulation, steps } };
-            });
-          },
-        );
+        try {
+          const res = await fetch("/api/keeperhub/preflight");
+          const data: KeeperHubPreflightResponse = await res.json();
 
-        const totalGas = proposal.actions.reduce((sum, a) => sum + parseFloat(a.estimatedGas), 0);
-        set((state) => ({
-          simulation: {
-            ...state.simulation,
-            status: "passed",
-            finishedAt: Date.now(),
-            totalGasEstimate: `${totalGas.toFixed(5)} ETH`,
-          },
-        }));
+          if (!res.ok || !data.ok) {
+            set({
+              simulation: {
+                status: "failed",
+                startedAt: get().simulation.startedAt,
+                finishedAt: Date.now(),
+                error: data.error ?? `Preflight request failed (${res.status}).`,
+              },
+            });
+            return;
+          }
+
+          set({
+            simulation: {
+              status: "passed",
+              startedAt: get().simulation.startedAt,
+              finishedAt: Date.now(),
+              workflow: data.workflow,
+            },
+          });
+        } catch (err) {
+          set({
+            simulation: {
+              status: "failed",
+              startedAt: get().simulation.startedAt,
+              finishedAt: Date.now(),
+              error: err instanceof Error ? err.message : "Preflight request failed.",
+            },
+          });
+        }
       },
 
+      // Real KeeperHub execution: POST triggers it, then poll GET until the
+      // execution reaches a terminal state. transactionHashes/executionId
+      // come straight from KeeperHub's response — never fabricated here.
       approveAndExecute: async () => {
         const proposal = get().proposal;
         if (!proposal || !get().walletAddress) return;
@@ -136,55 +151,141 @@ export const useMastraStore = create<MastraState>()(
         set({
           execution: {
             status: "running",
-            steps: proposal.actions.map((a) => ({
-              actionId: a.id,
-              label: a.title,
-              chain: a.chain,
-              status: "pending",
-            })),
+            steps: [
+              {
+                actionId: "keeperhub-execution",
+                label: "Execute KeeperHub workflow",
+                chain: "sepolia",
+                status: "active",
+                timestamp: Date.now(),
+              },
+            ],
             startedAt: Date.now(),
           },
         });
 
-        const finalTxHash = await runExecution(proposal, (step, idx) => {
-          set((state) => {
-            const steps = [...state.execution.steps];
-            steps[idx] = step;
-            return { execution: { ...state.execution, steps } };
-          });
-        });
+        try {
+          let result: KeeperHubExecuteResponse = await fetch("/api/keeperhub/execute", { method: "POST" }).then((r) =>
+            r.json(),
+          );
 
-        const finishedAt = Date.now();
-        set((state) => ({
-          execution: { ...state.execution, status: "confirmed", finishedAt, finalTxHash },
-        }));
+          const maxPolls = 20;
+          for (let i = 0; result.ok && result.status === "pending" && i < maxPolls; i++) {
+            await delay(3000);
+            const params = new URLSearchParams({
+              workflowId: result.workflowId ?? "",
+              executionId: result.executionId ?? "",
+            });
+            result = await fetch(`/api/keeperhub/execute?${params}`).then((r) => r.json());
+          }
 
-        const record: ExecutionRecord = {
-          id: `exec-${finishedAt}`,
-          proposalId: proposal.id,
-          intent: proposal.intent,
-          status: "confirmed",
-          steps: get().execution.steps,
-          startedAt: get().execution.startedAt ?? finishedAt,
-          finishedAt,
-          finalTxHash,
-          approvedBy: get().walletAddress ?? "",
-          fromChain: proposal.fromChain,
-          toChain: proposal.toChain,
-          amount: proposal.amount,
-          token: proposal.token,
-          usdValue: proposal.usdValue,
-          simulationPassed: get().simulation.status === "passed",
-        };
+          const finishedAt = Date.now();
 
-        set((state) => ({ auditTrail: [record, ...state.auditTrail] }));
+          if (!result.ok || result.status !== "completed") {
+            const errorMessage =
+              result.error ??
+              (result.status === "pending" ? "Execution did not confirm within the polling window." : "KeeperHub execution failed.");
+            set((state) => ({
+              execution: {
+                ...state.execution,
+                status: "failed",
+                finishedAt,
+                error: errorMessage,
+                keeperhubWorkflowId: result.workflowId,
+                keeperhubExecutionId: result.executionId,
+                steps: [
+                  {
+                    ...state.execution.steps[0],
+                    status: "failed",
+                    timestamp: finishedAt,
+                  },
+                ],
+              },
+            }));
+
+            const record: ExecutionRecord = {
+              id: `exec-${finishedAt}`,
+              proposalId: proposal.id,
+              intent: `Real KeeperHub execution failed (workflow ${result.workflowId ?? "unknown"})`,
+              status: "failed",
+              steps: get().execution.steps,
+              startedAt: get().execution.startedAt ?? finishedAt,
+              finishedAt,
+              approvedBy: get().walletAddress ?? "",
+              fromChain: "sepolia",
+              toChain: "sepolia",
+              amount: "—",
+              token: "",
+              usdValue: "—",
+              preflightPassed: get().simulation.status === "passed",
+              keeperhubWorkflowId: result.workflowId,
+              keeperhubExecutionId: result.executionId,
+              error: errorMessage,
+            };
+            set((state) => ({ auditTrail: [record, ...state.auditTrail] }));
+            return;
+          }
+
+          const finalTxHash = result.transactionHashes?.[0];
+          set((state) => ({
+            execution: {
+              ...state.execution,
+              status: "confirmed",
+              finishedAt,
+              finalTxHash,
+              keeperhubWorkflowId: result.workflowId,
+              keeperhubExecutionId: result.executionId,
+              steps: [
+                {
+                  ...state.execution.steps[0],
+                  status: "confirmed",
+                  txHash: finalTxHash,
+                  timestamp: finishedAt,
+                },
+              ],
+            },
+          }));
+
+          const record: ExecutionRecord = {
+            id: `exec-${finishedAt}`,
+            proposalId: proposal.id,
+            intent: `Real KeeperHub execution — workflow ${result.workflowId} on Sepolia`,
+            status: "confirmed",
+            steps: get().execution.steps,
+            startedAt: get().execution.startedAt ?? finishedAt,
+            finishedAt,
+            finalTxHash,
+            approvedBy: get().walletAddress ?? "",
+            fromChain: "sepolia",
+            toChain: "sepolia",
+            amount: "—",
+            token: "",
+            usdValue: "—",
+            preflightPassed: get().simulation.status === "passed",
+            keeperhubWorkflowId: result.workflowId,
+            keeperhubExecutionId: result.executionId,
+          };
+          set((state) => ({ auditTrail: [record, ...state.auditTrail] }));
+        } catch (err) {
+          const finishedAt = Date.now();
+          const errorMessage = err instanceof Error ? err.message : "Execution request failed.";
+          set((state) => ({
+            execution: {
+              ...state.execution,
+              status: "failed",
+              finishedAt,
+              error: errorMessage,
+              steps: [{ ...state.execution.steps[0], status: "failed", timestamp: finishedAt }],
+            },
+          }));
+        }
       },
 
       rejectProposal: () => {
         set({
           proposal: null,
           proposalStatus: "none",
-          simulation: { status: "idle", steps: [] },
+          simulation: { status: "idle" },
           execution: { status: "idle", steps: [] },
         });
       },
@@ -193,7 +294,7 @@ export const useMastraStore = create<MastraState>()(
         set({
           proposal: null,
           proposalStatus: "none",
-          simulation: { status: "idle", steps: [] },
+          simulation: { status: "idle" },
           execution: { status: "idle", steps: [] },
         });
       },
