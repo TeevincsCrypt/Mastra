@@ -21,6 +21,11 @@ export function Nav() {
   const connectWallet = useMastraStore((s) => s.connectWallet);
   const disconnectWallet = useMastraStore((s) => s.disconnectWallet);
 
+  // The landing page (root route, disconnected) is a self-contained marketing
+  // page with its own Connect Wallet CTAs and no other useful destinations
+  // pre-connect, so skip the persistent app toolbar there.
+  if (hydrated && !connected && pathname === "/") return null;
+
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">

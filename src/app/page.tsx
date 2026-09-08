@@ -7,6 +7,7 @@ import { shortHash } from "@/lib/mock";
 import { ChainRoute } from "@/components/ChainBadge";
 import { StatusPill } from "@/components/StatusPill";
 import { PageShell } from "@/components/PageShell";
+import { LandingPage } from "@/components/landing/LandingPage";
 
 export default function DashboardPage() {
   const hydrated = useHydrated();
@@ -15,43 +16,9 @@ export default function DashboardPage() {
 
   if (!hydrated) return null;
 
-  if (!connected) return <LandingHero onConnect={connectWallet} />;
+  if (!connected) return <LandingPage onConnect={connectWallet} />;
 
   return <ConnectedDashboard />;
-}
-
-function LandingHero({ onConnect }: { onConnect: () => void }) {
-  return (
-    <PageShell>
-      <div className="flex min-h-[72vh] flex-col items-center justify-center text-center">
-        <StatusPill tone="accent" dot pulse>
-          Execution control for autonomous agents
-        </StatusPill>
-        <h1 className="mt-6 max-w-2xl text-4xl font-semibold tracking-tight text-text-primary sm:text-5xl">
-          Wayfinder thinks. <span className="text-accent">Mastra verifies.</span> KeeperHub executes.
-        </h1>
-        <p className="mt-5 max-w-xl text-base text-text-secondary">
-          Connect a wallet to receive a live Wayfinder agent proposal, watch KeeperHub dry-run
-          and validate it, then approve the exact workflow for on-chain execution.
-        </p>
-        <button
-          onClick={onConnect}
-          className="mt-8 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-[#04262c] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-        >
-          Connect Wallet
-        </button>
-
-        <div className="mt-16 grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-4">
-          {["Connect", "Propose", "Verify", "Execute"].map((step, i) => (
-            <div key={step} className="card px-4 py-4 text-left">
-              <div className="text-xs font-mono text-text-muted">0{i + 1}</div>
-              <div className="mt-1 text-sm font-medium text-text-primary">{step}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </PageShell>
-  );
 }
 
 function ConnectedDashboard() {
