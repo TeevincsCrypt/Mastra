@@ -2,7 +2,7 @@ type Tone = "neutral" | "accent" | "wayfinder" | "success" | "danger" | "warning
 
 const TONE_STYLES: Record<Tone, { bg: string; fg: string; border: string }> = {
   neutral: { bg: "var(--surface-hover)", fg: "var(--text-secondary)", border: "var(--border-strong)" },
-  accent: { bg: "var(--accent-dim)", fg: "var(--accent-strong)", border: "rgba(34,211,238,0.35)" },
+  accent: { bg: "var(--accent-dim)", fg: "var(--accent-strong)", border: "rgba(16,185,129,0.35)" },
   wayfinder: { bg: "var(--wayfinder-dim)", fg: "var(--wayfinder)", border: "rgba(167,139,250,0.35)" },
   success: { bg: "var(--success-dim)", fg: "var(--success)", border: "rgba(52,211,153,0.35)" },
   danger: { bg: "var(--danger-dim)", fg: "var(--danger)", border: "rgba(248,113,113,0.35)" },

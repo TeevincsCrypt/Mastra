@@ -34,7 +34,7 @@ export default function ExecutionPage() {
           <p className="max-w-sm text-sm text-text-secondary">
             Approve a workflow from the Workflow Review screen to watch KeeperHub execute it here.
           </p>
-          <Link href="/" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#04262c]">
+          <Link href="/" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#052e1f]">
             Back to Dashboard
           </Link>
         </div>
@@ -110,7 +110,7 @@ export default function ExecutionPage() {
           <div className="mt-6 flex justify-center gap-3">
             <Link
               href="/audit"
-              className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-[#04262c] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-[#052e1f] transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               View Audit Record
             </Link>

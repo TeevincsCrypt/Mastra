@@ -40,7 +40,7 @@ export default function WorkflowReviewPage() {
           </p>
           <Link
             href={execution.status === "running" ? "/execution" : "/audit"}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#04262c]"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#052e1f]"
           >
             {execution.status === "running" ? "View live execution" : "View audit record"}
           </Link>
@@ -57,7 +57,7 @@ export default function WorkflowReviewPage() {
           <p className="max-w-sm text-sm text-text-secondary">
             There&apos;s no pending Wayfinder proposal right now. Head back to the dashboard to request one.
           </p>
-          <Link href="/" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#04262c]">
+          <Link href="/" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[#052e1f]">
             Back to Dashboard
           </Link>
         </div>
@@ -141,7 +141,7 @@ function ReviewContent() {
               </p>
               <button
                 onClick={runKeeperSimulation}
-                className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-[#04262c] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-[#052e1f] transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
                 Run KeeperHub Simulation
               </button>
@@ -190,7 +190,7 @@ function ReviewContent() {
         <button
           onClick={handleApprove}
           disabled={!simPassed}
-          className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-[#04262c] transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-[#052e1f] transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Approve &amp; Execute
         </button>

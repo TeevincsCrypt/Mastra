@@ -90,7 +90,7 @@ function ConnectedDashboard() {
             </div>
             <Link
               href="/workflow"
-              className="whitespace-nowrap rounded-lg bg-accent px-4 py-2.5 text-center text-sm font-semibold text-[#04262c] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              className="whitespace-nowrap rounded-lg bg-accent px-4 py-2.5 text-center text-sm font-semibold text-[#052e1f] transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               Review Workflow
             </Link>
