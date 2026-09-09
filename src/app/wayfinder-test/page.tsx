@@ -11,12 +11,17 @@ import { useState } from "react";
  * misleading state this build avoids. Reachable only by typing the URL.
  */
 export default function WayfinderTestPage() {
-  const [fromToken, setFromToken] = useState("usdc-ethereum");
+  const [fromToken, setFromToken] = useState("usd-coin-ethereum");
   const [toToken, setToToken] = useState("weth-ethereum");
   const [amount, setAmount] = useState("10.0");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [resolveQuery, setResolveQuery] = useState("usd-coin-ethereum");
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolveResult, setResolveResult] = useState<unknown>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   async function runQuote() {
     setLoading(true);
@@ -38,6 +43,29 @@ export default function WayfinderTestPage() {
       setError(err instanceof Error ? err.message : "Request failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runResolve() {
+    setResolveLoading(true);
+    setResolveError(null);
+    setResolveResult(null);
+    try {
+      const res = await fetch("/api/wayfinder/resolve-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: resolveQuery }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setResolveError(data.error ?? `Request failed (${res.status}).`);
+      } else {
+        setResolveResult(data.result);
+      }
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : "Request failed.");
+    } finally {
+      setResolveLoading(false);
     }
   }
 
@@ -97,6 +125,48 @@ export default function WayfinderTestPage() {
           {JSON.stringify(result, null, 2)}
         </pre>
       )}
+
+      <div className="mt-10 border-t border-border pt-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-muted">
+          Diagnostic — token resolution only
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Resolve token (HTTP status diagnostic)</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Calls the SDK&apos;s read-only <code className="font-mono">onchain_resolve_token</code> tool. Unlike a failed
+          quote — which discards the underlying HTTP status — this tool&apos;s own error handling preserves it, so use
+          this when a quote fails to see the real status code instead of guessing.
+        </p>
+
+        <div className="card mt-4 flex flex-col gap-3 p-5">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Token query
+            <input
+              value={resolveQuery}
+              onChange={(e) => setResolveQuery(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <button
+            onClick={runResolve}
+            disabled={resolveLoading}
+            className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {resolveLoading ? "Requesting…" : "Resolve token"}
+          </button>
+        </div>
+
+        {resolveError && (
+          <div className="mt-4 rounded-lg border border-danger/30 bg-danger-dim px-4 py-3 text-sm text-danger">
+            {resolveError}
+          </div>
+        )}
+
+        {resolveResult != null && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
+            {JSON.stringify(resolveResult, null, 2)}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }

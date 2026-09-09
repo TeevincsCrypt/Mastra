@@ -7,10 +7,12 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
  * wayfinder-paths-sdk MCP server (see /wayfinder-service), reached over its
  * officially-supported streamable-http transport.
  *
- * Only onchain_quote_swap is ever called — a read-only routing/quote tool.
- * onchain_swap / onchain_send (which sign and broadcast internally, per the
- * SDK's own source) are deliberately never invoked from here. Wayfinder is
- * the routing/decision layer; KeeperHub remains the sole executor.
+ * Only two read-only tools are ever called: onchain_quote_swap and
+ * onchain_resolve_token (used purely as a token-lookup diagnostic — see
+ * resolveToken() below). onchain_swap / onchain_send (which sign and
+ * broadcast internally, per the SDK's own source) are deliberately never
+ * invoked from here. Wayfinder is the routing/decision layer; KeeperHub
+ * remains the sole executor.
  */
 
 export class WayfinderError extends Error {}
@@ -114,6 +116,35 @@ export async function quoteSwap(params: WayfinderQuoteParams): Promise<Wayfinder
       providers: quote?.providers,
       suggestedSwapRequest: asRecord(data.suggested_swap_request),
     };
+  });
+}
+
+/**
+ * Diagnostic only: calls the SDK's read-only onchain_resolve_token tool
+ * directly. Unlike onchain_quote_swap — which swallows the underlying HTTP
+ * error from Wayfinder's token-detail endpoint into a bare "Cannot resolve
+ * token" string with no status code — this tool's own error handling
+ * preserves { status_code } in its `details`. Useful for diagnosing token
+ * resolution failures without guessing, and without patching the vendored
+ * SDK. Never signs or broadcasts anything.
+ */
+export async function resolveToken(query: string): Promise<{ raw: Record<string, unknown> }> {
+  return withClient(async (client) => {
+    const result = (await client.callTool({
+      name: "onchain_resolve_token",
+      arguments: { query },
+    })) as ToolCallResult;
+
+    if (result.isError) {
+      throw new WayfinderError(extractText(result) ?? "onchain_resolve_token returned an error.");
+    }
+
+    const data = result.structuredContent ?? parseTextContent(result);
+    if (!data) {
+      throw new WayfinderError("onchain_resolve_token returned no parseable content — check the raw MCP response.");
+    }
+
+    return { raw: data };
   });
 }
 
