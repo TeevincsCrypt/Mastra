@@ -23,6 +23,11 @@ export default function WayfinderTestPage() {
   const [resolveResult, setResolveResult] = useState<unknown>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
 
+  const [validateAmount, setValidateAmount] = useState("1.5");
+  const [validateLoading, setValidateLoading] = useState(false);
+  const [validateResult, setValidateResult] = useState<unknown>(null);
+  const [validateError, setValidateError] = useState<string | null>(null);
+
   async function runQuote() {
     setLoading(true);
     setError(null);
@@ -43,6 +48,29 @@ export default function WayfinderTestPage() {
       setError(err instanceof Error ? err.message : "Request failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runValidate() {
+    setValidateLoading(true);
+    setValidateError(null);
+    setValidateResult(null);
+    try {
+      const res = await fetch("/api/keeperhub/validate-mainnet-workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromToken: "usd-coin-ethereum", toToken: "weth-ethereum", amount: validateAmount }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setValidateError(JSON.stringify(data, null, 2));
+      } else {
+        setValidateResult(data);
+      }
+    } catch (err) {
+      setValidateError(err instanceof Error ? err.message : "Request failed.");
+    } finally {
+      setValidateLoading(false);
     }
   }
 
@@ -164,6 +192,50 @@ export default function WayfinderTestPage() {
         {resolveResult != null && (
           <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
             {JSON.stringify(resolveResult, null, 2)}
+          </pre>
+        )}
+      </div>
+
+      <div className="mt-10 border-t border-danger/40 pt-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-danger">
+          Mainnet-facing — but non-executing
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Validate KeeperHub dynamic-workflow schema</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Runs a real Ethereum mainnet Wayfinder quote (USDC → WETH), decodes the outer{" "}
+          <code className="font-mono">execute(bytes,bytes[])</code> call, and attempts to{" "}
+          <strong>create</strong> (never execute) a KeeperHub workflow using the decoded bytes verbatim. This never
+          signs or broadcasts anything — it only tests whether KeeperHub&apos;s <code className="font-mono">web3/write-contract</code>{" "}
+          schema accepts <code className="font-mono">bytes</code>/<code className="font-mono">bytes[]</code> functionArgs.
+        </p>
+
+        <div className="card mt-4 flex flex-col gap-3 p-5">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Amount (USDC, for the quote only)
+            <input
+              value={validateAmount}
+              onChange={(e) => setValidateAmount(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <button
+            onClick={runValidate}
+            disabled={validateLoading}
+            className="w-fit rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {validateLoading ? "Requesting…" : "Validate schema (creates workflow, does not execute)"}
+          </button>
+        </div>
+
+        {validateError && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-danger/30 bg-danger-dim p-4 text-xs text-danger">
+            {validateError}
+          </pre>
+        )}
+
+        {validateResult != null && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
+            {JSON.stringify(validateResult, null, 2)}
           </pre>
         )}
       </div>
