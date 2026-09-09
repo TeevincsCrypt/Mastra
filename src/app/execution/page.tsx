@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMastraStore } from "@/lib/store";
+import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/mock";
 import { ChainBadge } from "@/components/ChainBadge";
@@ -11,13 +12,13 @@ import type { ExecStepStatus } from "@/lib/types";
 
 export default function ExecutionPage() {
   const hydrated = useHydrated();
-  const connected = useMastraStore((s) => s.walletConnected);
+  const { isConnected, isWrongNetwork } = useWallet();
   const proposal = useMastraStore((s) => s.proposal);
   const execution = useMastraStore((s) => s.execution);
 
   if (!hydrated) return null;
 
-  if (!connected) {
+  if (!isConnected || isWrongNetwork) {
     return (
       <PageShell>
         <PageHeader eyebrow="Execution" title="Live transaction progress" />

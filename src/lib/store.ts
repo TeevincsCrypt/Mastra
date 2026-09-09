@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { buildUsdcBridgeProposal, fakeAddress } from "./mock";
+import { buildUsdcBridgeProposal } from "./mock";
 import type { ExecutionRecord, ExecutionStep, SimulationResult, WorkflowProposal } from "./types";
 
 interface KeeperHubExecuteResponse {
@@ -23,9 +23,6 @@ function delay(ms: number) {
 }
 
 interface MastraState {
-  walletConnected: boolean;
-  walletAddress: string | null;
-
   proposal: WorkflowProposal | null;
   proposalStatus: "none" | "incoming" | "ready";
 
@@ -44,11 +41,9 @@ interface MastraState {
 
   auditTrail: ExecutionRecord[];
 
-  connectWallet: () => void;
-  disconnectWallet: () => void;
   requestProposal: () => void;
   runKeeperSimulation: () => Promise<void>;
-  approveAndExecute: () => Promise<void>;
+  approveAndExecute: (approvedBy: string) => Promise<void>;
   rejectProposal: () => void;
   resetActive: () => void;
 }
@@ -56,9 +51,6 @@ interface MastraState {
 export const useMastraStore = create<MastraState>()(
   persist(
     (set, get) => ({
-      walletConnected: false,
-      walletAddress: null,
-
       proposal: null,
       proposalStatus: "none",
 
@@ -67,24 +59,6 @@ export const useMastraStore = create<MastraState>()(
       execution: { status: "idle", steps: [] },
 
       auditTrail: [],
-
-      connectWallet: () => {
-        set({ walletConnected: true, walletAddress: fakeAddress() });
-        setTimeout(() => {
-          if (!get().proposal) get().requestProposal();
-        }, 900);
-      },
-
-      disconnectWallet: () => {
-        set({
-          walletConnected: false,
-          walletAddress: null,
-          proposal: null,
-          proposalStatus: "none",
-          simulation: { status: "idle" },
-          execution: { status: "idle", steps: [] },
-        });
-      },
 
       requestProposal: () => {
         set({ proposalStatus: "incoming" });
@@ -144,9 +118,9 @@ export const useMastraStore = create<MastraState>()(
       // Real KeeperHub execution: POST triggers it, then poll GET until the
       // execution reaches a terminal state. transactionHashes/executionId
       // come straight from KeeperHub's response — never fabricated here.
-      approveAndExecute: async () => {
+      approveAndExecute: async (approvedBy: string) => {
         const proposal = get().proposal;
-        if (!proposal || !get().walletAddress) return;
+        if (!proposal || !approvedBy) return;
 
         set({
           execution: {
@@ -211,7 +185,7 @@ export const useMastraStore = create<MastraState>()(
               steps: get().execution.steps,
               startedAt: get().execution.startedAt ?? finishedAt,
               finishedAt,
-              approvedBy: get().walletAddress ?? "",
+              approvedBy,
               fromChain: "sepolia",
               toChain: "sepolia",
               amount: "—",
@@ -255,7 +229,7 @@ export const useMastraStore = create<MastraState>()(
             startedAt: get().execution.startedAt ?? finishedAt,
             finishedAt,
             finalTxHash,
-            approvedBy: get().walletAddress ?? "",
+            approvedBy,
             fromChain: "sepolia",
             toChain: "sepolia",
             amount: "—",
@@ -302,8 +276,6 @@ export const useMastraStore = create<MastraState>()(
     {
       name: "mastra-store",
       partialize: (state) => ({
-        walletConnected: state.walletConnected,
-        walletAddress: state.walletAddress,
         auditTrail: state.auditTrail,
       }),
     },

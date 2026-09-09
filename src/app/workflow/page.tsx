@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMastraStore } from "@/lib/store";
+import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/mock";
 import { ChainBadge, ChainRoute } from "@/components/ChainBadge";
@@ -12,14 +13,14 @@ import type { SimStepStatus, WorkflowAction } from "@/lib/types";
 
 export default function WorkflowReviewPage() {
   const hydrated = useHydrated();
-  const connected = useMastraStore((s) => s.walletConnected);
+  const { isConnected, isWrongNetwork } = useWallet();
   const proposal = useMastraStore((s) => s.proposal);
   const proposalStatus = useMastraStore((s) => s.proposalStatus);
   const execution = useMastraStore((s) => s.execution);
 
   if (!hydrated) return null;
 
-  if (!connected) {
+  if (!isConnected || isWrongNetwork) {
     return (
       <PageShell>
         <PageHeader eyebrow="Workflow Review" title="Every action, before it happens" />
@@ -70,6 +71,7 @@ export default function WorkflowReviewPage() {
 
 function ReviewContent() {
   const router = useRouter();
+  const { address } = useWallet();
   const proposal = useMastraStore((s) => s.proposal)!;
   const simulation = useMastraStore((s) => s.simulation);
   const runKeeperSimulation = useMastraStore((s) => s.runKeeperSimulation);
@@ -82,7 +84,8 @@ function ReviewContent() {
   const simFailed = simulation.status === "failed";
 
   function handleApprove() {
-    approveAndExecute();
+    if (!address) return;
+    approveAndExecute(address);
     router.push("/execution");
   }
 
@@ -106,8 +109,9 @@ function ReviewContent() {
       />
 
       <div className="mb-4 rounded-lg border border-wayfinder/30 bg-wayfinder-dim px-4 py-2.5 text-xs text-text-secondary">
-        This proposal is Mastra&apos;s representative Wayfinder workflow — Wayfinder&apos;s live proposal API isn&apos;t wired up yet.
-        The KeeperHub preflight and execution below are real.
+        <span className="font-medium text-wayfinder">Representative proposal, not a live Wayfinder response.</span> Wayfinder&apos;s
+        real capability for this is a local Python SDK/MCP tool, not a hosted API — there&apos;s no public endpoint
+        Mastra&apos;s server can call the way it calls KeeperHub&apos;s. The KeeperHub preflight and execution below are real.
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -187,20 +191,27 @@ function ReviewContent() {
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
-        <button
-          onClick={handleReject}
-          className="rounded-lg border border-border-strong px-5 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:border-danger/50 hover:text-danger"
-        >
-          Reject
-        </button>
-        <button
-          onClick={handleApprove}
-          disabled={!simPassed}
-          className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Approve &amp; Execute
-        </button>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-md text-xs text-text-muted">
+          Approving as <span className="font-mono text-text-secondary">{shortHash(address ?? "", 6, 4)}</span> — this
+          is your identity/authorization only. Execution itself runs through KeeperHub&apos;s own non-custodial
+          wallet, not yours; your wallet never signs the on-chain transaction.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleReject}
+            className="rounded-lg border border-border-strong px-5 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:border-danger/50 hover:text-danger"
+          >
+            Reject
+          </button>
+          <button
+            onClick={handleApprove}
+            disabled={!simPassed}
+            className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Approve &amp; Execute
+          </button>
+        </div>
       </div>
     </PageShell>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMastraStore } from "@/lib/store";
+import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/mock";
 import { ChainRoute } from "@/components/ChainBadge";
@@ -10,11 +11,11 @@ import { PageShell, PageHeader, ConnectWalletPrompt } from "@/components/PageShe
 
 export default function DashboardPage() {
   const hydrated = useHydrated();
-  const connected = useMastraStore((s) => s.walletConnected);
+  const { isConnected, isWrongNetwork } = useWallet();
 
   if (!hydrated) return null;
 
-  if (!connected) {
+  if (!isConnected || isWrongNetwork) {
     return (
       <PageShell>
         <PageHeader eyebrow="Dashboard" title="Agent status, pending actions, recent executions" />
@@ -27,7 +28,7 @@ export default function DashboardPage() {
 }
 
 function ConnectedDashboard() {
-  const address = useMastraStore((s) => s.walletAddress);
+  const { address } = useWallet();
   const proposal = useMastraStore((s) => s.proposal);
   const proposalStatus = useMastraStore((s) => s.proposalStatus);
   const execution = useMastraStore((s) => s.execution);

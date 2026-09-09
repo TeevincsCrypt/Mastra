@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMastraStore } from "@/lib/store";
+import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/mock";
 import { ChainRoute } from "@/components/ChainBadge";
@@ -11,12 +12,12 @@ import type { ExecutionRecord } from "@/lib/types";
 
 export default function AuditTrailPage() {
   const hydrated = useHydrated();
-  const connected = useMastraStore((s) => s.walletConnected);
+  const { isConnected, isWrongNetwork } = useWallet();
   const auditTrail = useMastraStore((s) => s.auditTrail);
 
   if (!hydrated) return null;
 
-  if (!connected) {
+  if (!isConnected || isWrongNetwork) {
     return (
       <PageShell>
         <PageHeader eyebrow="Audit Trail" title="Complete execution history" />
@@ -99,7 +100,9 @@ function AuditRow({ record }: { record: ExecutionRecord }) {
 
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Approved by</div>
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                Approved by (identity only — not the executing wallet)
+              </div>
               <div className="font-mono text-xs text-text-secondary">{record.approvedBy}</div>
             </div>
             {record.keeperhubWorkflowId && (

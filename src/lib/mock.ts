@@ -14,10 +14,6 @@ function hex(len: number) {
   return out;
 }
 
-export function fakeAddress() {
-  return `0x${hex(40)}`;
-}
-
 export function fakeTxHash() {
   return `0x${hex(64)}`;
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
+import { Providers } from "@/components/Providers";
+import { WalletProposalSync } from "@/components/WalletProposalSync";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,8 +27,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Nav />
-        <main className="flex-1">{children}</main>
+        <Providers>
+          <WalletProposalSync />
+          <Nav />
+          <main className="flex-1">{children}</main>
+        </Providers>
       </body>
     </html>
   );
