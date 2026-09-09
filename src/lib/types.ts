@@ -88,5 +88,8 @@ export interface ExecutionRecord {
    * integration has run; absent for anything not backed by a live call. */
   keeperhubWorkflowId?: string;
   keeperhubExecutionId?: string;
+  /** SHA-256 of the canonicalized approved proposal, computed at approval
+   * time and reverified immediately before execution — see approvalHash.ts. */
+  approvedWorkflowHash?: string;
   error?: string;
 }

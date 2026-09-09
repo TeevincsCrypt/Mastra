@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { buildUsdcBridgeProposal } from "./mock";
+import { hashApprovedWorkflow } from "./approvalHash";
 import type { ExecutionRecord, ExecutionStep, SimulationResult, WorkflowProposal } from "./types";
 
 interface KeeperHubExecuteResponse {
@@ -36,6 +37,7 @@ interface MastraState {
     finalTxHash?: string;
     keeperhubWorkflowId?: string;
     keeperhubExecutionId?: string;
+    approvedWorkflowHash?: string;
     error?: string;
   };
 
@@ -122,6 +124,13 @@ export const useMastraStore = create<MastraState>()(
         const proposal = get().proposal;
         if (!proposal || !approvedBy) return;
 
+        // Security invariant: hash exactly what's being approved right now.
+        // Immediately before the actual execute call below, this is
+        // recomputed against the current proposal and compared — any
+        // mismatch invalidates the approval instead of silently executing
+        // something the user didn't review.
+        const approvedWorkflowHash = await hashApprovedWorkflow(proposal);
+
         set({
           execution: {
             status: "running",
@@ -135,8 +144,26 @@ export const useMastraStore = create<MastraState>()(
               },
             ],
             startedAt: Date.now(),
+            approvedWorkflowHash,
           },
         });
+
+        const currentProposal = get().proposal;
+        const currentHash = currentProposal ? await hashApprovedWorkflow(currentProposal) : null;
+        if (currentHash !== approvedWorkflowHash) {
+          const finishedAt = Date.now();
+          const errorMessage = "APPROVAL INVALIDATED — the proposal changed after approval. Review it again before executing.";
+          set((state) => ({
+            execution: {
+              ...state.execution,
+              status: "failed",
+              finishedAt,
+              error: errorMessage,
+              steps: [{ ...state.execution.steps[0], status: "failed", timestamp: finishedAt }],
+            },
+          }));
+          return;
+        }
 
         try {
           let result: KeeperHubExecuteResponse = await fetch("/api/keeperhub/execute", { method: "POST" }).then((r) =>
@@ -194,6 +221,7 @@ export const useMastraStore = create<MastraState>()(
               preflightPassed: get().simulation.status === "passed",
               keeperhubWorkflowId: result.workflowId,
               keeperhubExecutionId: result.executionId,
+              approvedWorkflowHash,
               error: errorMessage,
             };
             set((state) => ({ auditTrail: [record, ...state.auditTrail] }));
@@ -238,6 +266,7 @@ export const useMastraStore = create<MastraState>()(
             preflightPassed: get().simulation.status === "passed",
             keeperhubWorkflowId: result.workflowId,
             keeperhubExecutionId: result.executionId,
+            approvedWorkflowHash,
           };
           set((state) => ({ auditTrail: [record, ...state.auditTrail] }));
         } catch (err) {

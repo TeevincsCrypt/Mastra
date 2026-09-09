@@ -48,7 +48,28 @@ See `.env.example`. All server-side only — never prefixed `NEXT_PUBLIC_`.
   **Approve & Execute** — Mastra does not currently create workflows on your
   behalf, since KeeperHub's exact workflow-creation JSON schema wasn't
   confirmed against live documentation.
-- `WAYFINDER_API_KEY` — reserved, not yet used (see below).
+- `WAYFINDER_API_KEY` — read only by `wayfinder-service` itself (its own
+  hosting platform's env vars), not by the Mastra app. Self-serve at
+  https://strategies.wayfinder.ai/.
+- `WAYFINDER_MCP_URL` — the URL of your deployed `wayfinder-service`. Not
+  yet wired into the main flow (see "Wayfinder integration status") — only
+  used by `/wayfinder-test` today.
+
+## Security invariant
+
+"The workflow KeeperHub executes must be exactly the workflow the user
+approved" — enforced, not just asserted. `src/lib/approvalHash.ts` computes
+a SHA-256 of the canonicalized (key-sorted) approved proposal the instant
+`Approve & Execute` is clicked; `store.ts`'s `approveAndExecute` recomputes
+that hash immediately before the actual execute call and compares. Any
+mismatch sets execution to `failed` with `APPROVAL INVALIDATED` rather than
+executing anything, and the hash is stored on every audit record
+(`approvedWorkflowHash`) so it's independently checkable later. With today's
+synchronous flow (approve and execute happen back-to-back against the same
+in-memory object) this can't yet actually diverge — it's real,
+tested-by-construction infrastructure for the moment there's a genuine gap
+between approval and execution, which is exactly what dynamic KeeperHub
+workflow creation (above) would introduce.
 
 ## Wallet architecture
 
@@ -77,32 +98,50 @@ hook exposing real connection/chain/error state to every screen.
 
 ## Wayfinder integration status
 
-Wayfinder (`WayfinderFoundation/wayfinder-paths-sdk`) is a real, separate
-product — but its actual current public integration surface was researched
-directly (its GitHub repo and `wayfinder-openclaw-skill/SKILL.md`, not
-guessed) and turns out to be architecturally incompatible with a simple
-server-route integration, for a real reason rather than a credentials gap:
+Deeper research (reading the SDK's actual source, not just its docs)
+overturned the earlier conclusion that this was architecturally impossible.
+Current, accurate status:
 
-- It exposes freeform operations (`quote_swap`, `execute` with kinds
-  `swap`/`send`/`hyperliquid_deposit`) that are conceptually close to what
-  Mastra's demo narrative needs.
-- But it's explicitly documented as **a local MCP resource server** —
-  commands run via `poetry run wayfinder` against a local
-  `$WAYFINDER_SDK_PATH` and `WAYFINDER_CONFIG_PATH`. There is no confirmed
-  public HTTP endpoint (unlike KeeperHub's clean hosted REST API) that a
-  deployed Next.js server route can call.
-- Making this real would mean standing up a separate, persistently-running
-  Python service to host the SDK and expose it over HTTP — real
-  infrastructure, not a Vercel API route, and exactly the "massive
-  microservice architecture just to use the SDK" this project ruled out
-  from the start.
+**What's real and built:**
+- `wayfinder-service/` — a Dockerfile that runs the **official, unmodified**
+  `wayfinder_paths.mcp.server` in its own `streamable-http` transport mode
+  (a real, documented CLI option: `--transport streamable-http`), deployable
+  to any small persistent host (Railway/Render/Fly). See that directory's
+  own README for exact deploy steps.
+- `src/lib/wayfinder/client.ts` — a real, server-only MCP client
+  (`@modelcontextprotocol/sdk`) that connects to your deployed service and
+  calls the SDK's real `onchain_quote_swap` tool. It never calls
+  `onchain_swap` / `onchain_send` — those sign and broadcast internally
+  using a locally-held key (confirmed from the SDK's own source), which
+  would make Wayfinder a competing executor to KeeperHub. Wayfinder stays
+  the routing/decision layer only; KeeperHub remains the sole executor.
+- No private key anywhere in this integration. `onchain_quote_swap` needs a
+  `wallet_label` referencing a configured wallet, but the SDK's wallet
+  loader only requires `private_key_hex` inside the signing callback —
+  which quote calls never reach. `wayfinder-service/config.json` has one
+  watch-only entry (a placeholder address), nothing else.
+- `/api/wayfinder/quote` and a diagnostic page at `/wayfinder-test` —
+  reachable directly, not linked from the main nav — let you exercise a
+  real Wayfinder quote once `WAYFINDER_MCP_URL` is set, independent of the
+  main flow.
 
-So: not integrated, not because of a missing key or blocked network, but
-because the real integration would require infrastructure this project
-deliberately doesn't take on. The proposal Mastra shows today is a stand-in,
-honestly labeled as such everywhere it appears, until that architecture
-changes (either Wayfinder ships a hosted API, or this project takes on a
-standalone Python service deliberately).
+**What's genuinely still blocked, and why:** wiring a real quote into
+Workflow Review's `Approve & Execute` would mean KeeperHub needs to execute
+a *dynamic* workflow matching that exact quote — not the fixed
+`KEEPERHUB_WORKFLOW_ID`. KeeperHub's real, documented workflow-creation
+schema (`POST /api/workflows/create`, `{name, nodes, edges}`, action type
+`web3/write-contract` confirmed with `{contractAddress, abi, abiFunction,
+functionArgs}`) needs a *decoded* ABI function call. A swap quote's
+calldata is very likely already-encoded raw transaction data from an
+aggregator contract. Neither the exact shape of Wayfinder's calldata output
+nor a KeeperHub action type that accepts raw (rather than decoded) calldata
+could be confirmed from available sources. Building past that would mean
+either guessing a translation, or silently substituting a simpler action
+than what was actually approved — both explicitly ruled out, the second one
+because it would violate the security invariant below. So: real quote data
+is obtainable and demonstrable via `/wayfinder-test` today; it is
+deliberately **not** wired into the main approve/execute flow, so the UI
+never shows a real proposal next to an execution that doesn't match it.
 
 ## The flow
 

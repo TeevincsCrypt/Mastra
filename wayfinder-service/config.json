@@ -1,0 +1,8 @@
+{
+  "wallets": [
+    {
+      "label": "mastra-quote-wallet",
+      "address": "0x000000000000000000000000000000000000dEaD"
+    }
+  ]
+}

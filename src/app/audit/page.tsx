@@ -117,6 +117,14 @@ function AuditRow({ record }: { record: ExecutionRecord }) {
                 <div className="font-mono text-xs text-text-secondary">{record.keeperhubExecutionId}</div>
               </div>
             )}
+            {record.approvedWorkflowHash && (
+              <div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Approved workflow hash</div>
+                <div className="font-mono text-xs text-text-secondary" title="SHA-256 of the approved proposal, reverified immediately before execution">
+                  {record.approvedWorkflowHash.slice(0, 16)}…
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Execution steps</div>
