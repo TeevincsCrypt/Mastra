@@ -11,9 +11,9 @@ import { useState } from "react";
  * misleading state this build avoids. Reachable only by typing the URL.
  */
 export default function WayfinderTestPage() {
-  const [fromToken, setFromToken] = useState("USDC");
-  const [toToken, setToToken] = useState("WETH");
-  const [amount, setAmount] = useState("10");
+  const [fromToken, setFromToken] = useState("usdc-ethereum");
+  const [toToken, setToToken] = useState("weth-ethereum");
+  const [amount, setAmount] = useState("10.0");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);

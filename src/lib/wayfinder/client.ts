@@ -85,6 +85,11 @@ export async function quoteSwap(params: WayfinderQuoteParams): Promise<Wayfinder
         to_token: params.toToken,
         amount: params.amount,
         slippage_bps: params.slippageBps ?? 50,
+        // Requests the real swap calldata alongside the quote — needed to
+        // determine whether KeeperHub's workflow schema can execute it.
+        // Still never signs or broadcasts anything; onchain_quote_swap
+        // remains a read-only routing/quote call.
+        include_calldata: true,
       },
     })) as ToolCallResult;
 
