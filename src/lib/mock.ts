@@ -22,8 +22,8 @@ export function fakeTxHash() {
   return `0x${hex(64)}`;
 }
 
-export function shortHash(hash: string, lead = 6, tail = 4) {
-  if (!hash) return "";
+export function shortHash(hash: unknown, lead = 6, tail = 4) {
+  if (typeof hash !== "string" || !hash) return "";
   return `${hash.slice(0, lead + 2)}…${hash.slice(-tail)}`;
 }
 

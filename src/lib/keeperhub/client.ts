@@ -230,16 +230,48 @@ function firstString(record: Record<string, unknown>, keys: string[]): string | 
 }
 
 function asExecutionArray(value: unknown): KeeperHubExecution[] {
-  if (Array.isArray(value)) return value as KeeperHubExecution[];
-  if (value && typeof value === "object") {
+  let raw: unknown[] | undefined;
+  if (Array.isArray(value)) raw = value;
+  else if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     for (const key of ["executions", "data", "items", "results"]) {
-      if (Array.isArray(record[key])) return record[key] as KeeperHubExecution[];
+      if (Array.isArray(record[key])) {
+        raw = record[key] as unknown[];
+        break;
+      }
     }
   }
-  throw new KeeperHubError(
-    "Unexpected KeeperHub response shape for execution list — expected an array (checked top level and executions/data/items/results).",
-    200,
-    value,
-  );
+  if (!raw) {
+    throw new KeeperHubError(
+      "Unexpected KeeperHub response shape for execution list — expected an array (checked top level and executions/data/items/results).",
+      200,
+      value,
+    );
+  }
+  return raw.map(normalizeExecution);
+}
+
+/**
+ * transactionHashes was described as an array of plain strings, but a real
+ * run showed that's not guaranteed — normalize each entry to a string,
+ * extracting from an object shape (e.g. {hash, blockNumber}) if needed,
+ * rather than passing whatever KeeperHub sent straight to the UI.
+ */
+function normalizeExecution(value: unknown): KeeperHubExecution {
+  const record = asRecord(value, "execution");
+  const id = firstString(record, ["id", "executionId", "_id"]) ?? "";
+  const status = firstString(record, ["status"]) ?? "unknown";
+  const rawHashes = record.transactionHashes;
+  const transactionHashes = Array.isArray(rawHashes)
+    ? rawHashes.map(extractHashString).filter((h): h is string => typeof h === "string" && h.length > 0)
+    : undefined;
+  return { ...record, id, status, transactionHashes } as KeeperHubExecution;
+}
+
+function extractHashString(entry: unknown): string | undefined {
+  if (typeof entry === "string") return entry;
+  if (entry && typeof entry === "object") {
+    return firstString(entry as Record<string, unknown>, ["hash", "transactionHash", "txHash", "tx"]);
+  }
+  return undefined;
 }
