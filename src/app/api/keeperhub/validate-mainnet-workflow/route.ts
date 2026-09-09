@@ -25,8 +25,13 @@ export const maxDuration = 60;
  * distinct, separate call from execute(workflowId), which this route never
  * calls. Nothing is signed or broadcast by this route under any
  * circumstances. Its entire purpose is answering one question empirically:
- * does KeeperHub's write-contract schema accept bytes/bytes[] functionArgs
- * and a payable execute() with value.
+ * does KeeperHub's write-contract schema accept bytes/bytes[] functionArgs.
+ *
+ * Two schema facts already confirmed from a real KeeperHub validation
+ * error (round 1 of this test): `abi` must be a JSON-stringified string,
+ * not an array, and `value` is an UNKNOWN_FIELD and must be omitted
+ * entirely — see dynamicWorkflow.ts. Both are applied here; this route now
+ * exists specifically to find out whether bytes[] itself is accepted.
  */
 
 interface RequestBody {
@@ -120,7 +125,6 @@ export async function POST(request: Request) {
     commands: decoded.commands,
     inputs: decoded.inputs,
     network,
-    value,
   });
 
   const workflowDefinition = buildSequentialWorkflow(

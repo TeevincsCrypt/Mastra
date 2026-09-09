@@ -64,11 +64,12 @@ async function keeperFetch(path: string, init?: RequestInit): Promise<unknown> {
 export interface Web3WriteContractAction {
   actionType: "web3/write-contract";
   contractAddress: string;
-  abi: unknown[];
+  /** KeeperHub's validator requires this as a JSON-stringified ABI, not an array — confirmed via the real Phase A validation error. */
+  abi: string;
   abiFunction: string;
   functionArgs: unknown[];
   network: string;
-  value?: string;
+  /** No `value` field — KeeperHub's validator rejects it as UNKNOWN_FIELD, confirmed via the real Phase A validation error. */
 }
 
 const ERC20_APPROVE_ABI: unknown[] = [
@@ -106,7 +107,7 @@ export function buildApproveAction(params: {
   return {
     actionType: "web3/write-contract",
     contractAddress: params.tokenAddress,
-    abi: ERC20_APPROVE_ABI,
+    abi: JSON.stringify(ERC20_APPROVE_ABI),
     abiFunction: "approve",
     functionArgs: [params.spender, params.amount],
     network: params.network,
@@ -118,16 +119,14 @@ export function buildExecuteAction(params: {
   commands: string;
   inputs: string[];
   network: string;
-  value: string;
 }): Web3WriteContractAction {
   return {
     actionType: "web3/write-contract",
     contractAddress: params.routerAddress,
-    abi: EXECUTE_ABI,
+    abi: JSON.stringify(EXECUTE_ABI),
     abiFunction: "execute",
     functionArgs: [params.commands, params.inputs],
     network: params.network,
-    value: params.value,
   };
 }
 
