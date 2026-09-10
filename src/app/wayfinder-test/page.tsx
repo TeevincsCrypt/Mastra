@@ -38,6 +38,13 @@ export default function WayfinderTestPage() {
   const [prepareResult, setPrepareResult] = useState<unknown>(null);
   const [prepareError, setPrepareError] = useState<string | null>(null);
 
+  const [executeWorkflowId, setExecuteWorkflowId] = useState("");
+  const [executeApprovedHash, setExecuteApprovedHash] = useState("");
+  const [executeConfirmText, setExecuteConfirmText] = useState("");
+  const [executeLoading, setExecuteLoading] = useState(false);
+  const [executeResult, setExecuteResult] = useState<unknown>(null);
+  const [executeError, setExecuteError] = useState<string | null>(null);
+
   async function runQuote() {
     setLoading(true);
     setError(null);
@@ -127,6 +134,30 @@ export default function WayfinderTestPage() {
       setPrepareError(err instanceof Error ? err.message : "Request failed.");
     } finally {
       setPrepareLoading(false);
+    }
+  }
+
+  async function runExecute() {
+    if (executeConfirmText !== "EXECUTE") return;
+    setExecuteLoading(true);
+    setExecuteError(null);
+    setExecuteResult(null);
+    try {
+      const res = await fetch("/api/keeperhub/execute-mainnet-swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowId: executeWorkflowId, approvedHash: executeApprovedHash }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setExecuteError(JSON.stringify(data, null, 2));
+      } else {
+        setExecuteResult(data);
+      }
+    } catch (err) {
+      setExecuteError(err instanceof Error ? err.message : "Request failed.");
+    } finally {
+      setExecuteLoading(false);
     }
   }
 
@@ -378,6 +409,66 @@ export default function WayfinderTestPage() {
         {prepareResult != null && (
           <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
             {JSON.stringify(prepareResult, null, 2)}
+          </pre>
+        )}
+      </div>
+
+      <div className="mt-10 border-t-4 border-danger pt-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-danger">
+          Phase D — sends REAL transactions and spends REAL funds
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Execute mainnet swap</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Re-verifies the approval hash against what&apos;s actually stored in KeeperHub right now, refuses to proceed
+          on any mismatch, and only then calls KeeperHub&apos;s real <code className="font-mono">execute(workflowId)</code>.
+          This is irreversible once broadcast. Paste the exact <code className="font-mono">keeperhubWorkflowId</code> and{" "}
+          <code className="font-mono">approvalHash</code> from a &quot;Prepare&quot; result above.
+        </p>
+
+        <div className="card mt-4 flex flex-col gap-3 p-5">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Workflow ID
+            <input
+              value={executeWorkflowId}
+              onChange={(e) => setExecuteWorkflowId(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Approved hash
+            <input
+              value={executeApprovedHash}
+              onChange={(e) => setExecuteApprovedHash(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Type EXECUTE to confirm
+            <input
+              value={executeConfirmText}
+              onChange={(e) => setExecuteConfirmText(e.target.value)}
+              placeholder="EXECUTE"
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <button
+            onClick={runExecute}
+            disabled={executeLoading || executeConfirmText !== "EXECUTE" || !executeWorkflowId || !executeApprovedHash}
+            className="w-fit rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            {executeLoading ? "Executing…" : "Execute real mainnet swap"}
+          </button>
+        </div>
+
+        {executeError && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-danger/30 bg-danger-dim p-4 text-xs text-danger">
+            {executeError}
+          </pre>
+        )}
+
+        {executeResult != null && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
+            {JSON.stringify(executeResult, null, 2)}
           </pre>
         )}
       </div>

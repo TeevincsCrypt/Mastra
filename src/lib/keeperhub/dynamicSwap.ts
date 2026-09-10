@@ -1,5 +1,5 @@
 import "server-only";
-import type { Hex } from "viem";
+import { decodeAbiParameters, parseAbiParameters, type Hex } from "viem";
 import { quoteSwap, WayfinderError } from "@/lib/wayfinder/client";
 import { decodeExecuteCalldata, ExecuteCalldataError, isVerifiedRouter } from "@/lib/wayfinder/executeCalldata";
 import {
@@ -7,13 +7,20 @@ import {
   buildExecuteAction,
   buildSequentialWorkflow,
   createWorkflow,
+  getCreatedWorkflow,
   getCurrentUser,
   type Web3WriteContractAction,
   type DynamicWorkflowDefinition,
 } from "@/lib/keeperhub/dynamicWorkflow";
 import { getErc20Allowance } from "@/lib/onchain/allowance";
 import { hashApprovedWorkflow } from "@/lib/approvalHash";
-import { KeeperHubError } from "@/lib/keeperhub/client";
+import {
+  KeeperHubError,
+  executeWorkflow,
+  findExecution,
+  isTerminalSuccess,
+  isTerminalFailure,
+} from "@/lib/keeperhub/client";
 
 /**
  * Phase B: the real Wayfinder -> KeeperHub mainnet swap pipeline.
@@ -230,5 +237,173 @@ export async function prepareMainnetSwapWorkflow(params: {
     stage: "unsupported_router",
     error: `None of ${MAX_ATTEMPTS} Wayfinder quotes routed through the one verified router. Real, disclosed limitation — not a fabricated result.`,
     attemptsLog,
+  };
+}
+
+interface ReconstructedPlan {
+  approvalAction: Web3WriteContractAction | null;
+  executeAction: Web3WriteContractAction;
+  securityPlan: Record<string, unknown>;
+}
+
+/**
+ * Rebuilds the exact security-plan object from what's ACTUALLY persisted in
+ * KeeperHub for a given workflow right now — NOT from a fresh Wayfinder
+ * quote, which is never reproducible byte-for-byte (each quote embeds a
+ * fresh requestId and time-sensitive routing data, so it would never match
+ * even when nothing is wrong). This checks the real invariant: has the
+ * workflow's stored definition been tampered with since it was approved.
+ *
+ * tokenAddress/inputAmountRaw are decoded directly from the execute
+ * action's own first input (always the TRANSFER_FROM command's
+ * (address,address,uint256) encoding, confirmed across every real quote
+ * seen in this project) rather than read from the approve action, so this
+ * works whether or not an approval step was included.
+ */
+function reconstructSecurityPlanFromWorkflow(workflow: Record<string, unknown>): ReconstructedPlan {
+  const nodes = Array.isArray(workflow.nodes) ? (workflow.nodes as Array<Record<string, unknown>>) : [];
+  const actionConfigs = nodes
+    .filter((n) => n.type === "action")
+    .map((n) => {
+      const data = n.data as Record<string, unknown> | undefined;
+      return data?.config as Web3WriteContractAction | undefined;
+    })
+    .filter((c): c is Web3WriteContractAction => !!c);
+
+  const executeAction = actionConfigs.find((a) => a.abiFunction === "execute");
+  if (!executeAction) {
+    throw new Error("Stored workflow has no execute() action — cannot reconstruct security plan.");
+  }
+  const approvalAction = actionConfigs.find((a) => a.abiFunction === "approve") ?? null;
+
+  const [commands, inputs] = JSON.parse(executeAction.functionArgs) as [string, string[]];
+  const [tokenAddress, , inputAmountRaw] = decodeAbiParameters(
+    parseAbiParameters("address, address, uint256"),
+    inputs[0] as Hex,
+  );
+
+  const securityPlan = {
+    targetContract: executeAction.contractAddress,
+    network: executeAction.network,
+    function: "execute",
+    commands,
+    inputs,
+    approvalAction,
+    amounts: { tokenAddress, inputAmountRaw: inputAmountRaw.toString() },
+  };
+
+  return { approvalAction, executeAction, securityPlan };
+}
+
+export interface ExecutedMainnetSwap {
+  ok: true;
+  workflowId: string;
+  executionId: string;
+  status: string;
+  transactionHashes?: string[];
+  raw: unknown;
+}
+
+export interface ExecutedMainnetSwapFailure {
+  ok: false;
+  stage: string;
+  error: string;
+  details?: unknown;
+}
+
+function delayMs(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The guarded execute step — the only place in this project that calls
+ * KeeperHub's real execute(workflowId) for the mainnet Wayfinder path.
+ *
+ * Re-derives the security plan from what's actually stored in KeeperHub
+ * right now, recomputes its hash, and refuses to call execute() if it
+ * doesn't match the approvedHash the caller supplies. Only on a match does
+ * this call the real, unmodified executeWorkflow() from client.ts, then
+ * polls for a terminal status using client.ts's existing
+ * findExecution/isTerminalSuccess/isTerminalFailure — the same pattern
+ * already proven on the verified Sepolia path.
+ */
+export async function executeMainnetSwapWorkflow(params: {
+  workflowId: string;
+  approvedHash: string;
+}): Promise<ExecutedMainnetSwap | ExecutedMainnetSwapFailure> {
+  let workflow: unknown;
+  try {
+    workflow = await getCreatedWorkflow(params.workflowId);
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "fetch_workflow",
+      error: err instanceof KeeperHubError ? err.message : err instanceof Error ? err.message : "Unknown error.",
+    };
+  }
+
+  const record = workflow && typeof workflow === "object" ? (workflow as Record<string, unknown>) : {};
+
+  let reconstructed: ReconstructedPlan;
+  try {
+    reconstructed = reconstructSecurityPlanFromWorkflow(record);
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "reconstruct_security_plan",
+      error: err instanceof Error ? err.message : "Unknown error reconstructing the security plan.",
+    };
+  }
+
+  const currentHash = await hashApprovedWorkflow(reconstructed.securityPlan);
+  if (currentHash !== params.approvedHash) {
+    return {
+      ok: false,
+      stage: "approval_invalidated",
+      error: "APPROVAL INVALIDATED — the workflow's stored actions no longer match the approved hash. Refusing to execute.",
+      details: { expected: params.approvedHash, actual: currentHash, securityPlan: reconstructed.securityPlan },
+    };
+  }
+
+  let execResult: { executionId: string; raw: unknown };
+  try {
+    execResult = await executeWorkflow(params.workflowId);
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "keeperhub_execute",
+      error: err instanceof KeeperHubError ? err.message : err instanceof Error ? err.message : "Unknown error.",
+      details: err instanceof KeeperHubError ? { status: err.status, body: err.body } : undefined,
+    };
+  }
+
+  const maxPolls = 20;
+  let execution;
+  for (let i = 0; i < maxPolls; i++) {
+    try {
+      execution = await findExecution(params.workflowId, execResult.executionId);
+    } catch {
+      execution = undefined;
+    }
+    if (execution && (isTerminalSuccess(execution.status) || isTerminalFailure(execution.status))) break;
+    await delayMs(3000);
+  }
+
+  if (!execution) {
+    return {
+      ok: false,
+      stage: "poll_timeout",
+      error: "Execution was triggered but did not reach a terminal state within the polling window.",
+      details: { executionId: execResult.executionId },
+    };
+  }
+
+  return {
+    ok: true,
+    workflowId: params.workflowId,
+    executionId: execResult.executionId,
+    status: execution.status,
+    transactionHashes: execution.transactionHashes,
+    raw: execution,
   };
 }
