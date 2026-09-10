@@ -35,6 +35,23 @@ export interface DecodedExecuteCall {
   inputs: Hex[];
 }
 
+/**
+ * The ONLY router contract this project has actually verified: its source
+ * was independently confirmed (execute(bytes,bytes[]) signature, Commands
+ * library with real byte values, decoded and cross-checked against a real
+ * captured Wayfinder swap — see project history). Wayfinder can route a
+ * quote through other providers (LI.FI, Enso, or Sprinter via a different
+ * internal path) whose contracts have NOT been verified — their calldata
+ * may coincidentally match this same execute(bytes,bytes[]) signature
+ * while having entirely different, unaudited semantics. Matching the
+ * ABI shape is not sufficient trust; matching this exact address is.
+ */
+export const VERIFIED_ROUTER_ADDRESS = "0xEbE0FA42523F69Ea1E97F5B08282654c19c2c0Ee";
+
+export function isVerifiedRouter(address: string): boolean {
+  return address.toLowerCase() === VERIFIED_ROUTER_ADDRESS.toLowerCase();
+}
+
 export function decodeExecuteCalldata(data: Hex): DecodedExecuteCall {
   let decoded;
   try {
