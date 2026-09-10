@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/audit", label: "Audit" },
   { href: "/integrations", label: "Integrations" },
   { href: "/security", label: "Security" },
+  { href: "/architecture", label: "Architecture" },
   { href: "/swap", label: "Swap" },
   { href: "/ai", label: "Mastra AI" },
 ];
