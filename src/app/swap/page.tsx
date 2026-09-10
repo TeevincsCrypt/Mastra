@@ -1,26 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { writeContract, waitForTransactionReceipt } from "wagmi/actions";
-import type { Hex } from "viem";
-import { wagmiConfig } from "@/lib/wagmi";
 import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
 import { shortHash, formatUnits } from "@/lib/format";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { StatusPill } from "@/components/StatusPill";
 import { SUPPORTED_TOKENS, findToken } from "@/lib/tokens";
-import { ERC20_ABI } from "@/lib/onchain/erc20Abi";
-import { EXECUTE_ABI } from "@/lib/wayfinder/executeCalldata";
 import { loadHistory, saveHistory, type HistoryEntry } from "@/lib/swapHistory";
 
 /**
- * Real, self-custodial Ethereum mainnet swap: real Wayfinder quote,
- * decoded and verified server-side, then signed and broadcast directly by
- * the visitor's OWN connected wallet — approve (if needed) then execute.
- * No intermediary wallet ever holds or spends the visitor's funds; each
- * visitor funds and spends only their own wallet. Nothing here is
- * simulated — every balance, quote, and transaction is real.
+ * Real Ethereum mainnet swap: real Wayfinder quote -> real decode -> real
+ * on-chain allowance check -> real KeeperHub workflow -> approval-hash
+ * security gate -> real KeeperHub execute(). Every number on this page
+ * comes from an actual API/RPC response; nothing here is simulated. This
+ * is Mastra's one real product flow — the earlier mock/Sepolia demo pages
+ * have been retired in favor of this.
  */
 
 // Display-only labels for this router's real Commands enum (verified against
@@ -49,32 +44,37 @@ function describeCommands(commandsHex: string): string {
   return bytes.map((b) => COMMAND_LABELS[b.toLowerCase()] ?? `Unknown (0x${b})`).join(" → ");
 }
 
-interface WalletBalances {
-  address: string;
+interface WalletState {
+  executionWallet: string;
   balances: Record<string, string>;
 }
 
 interface PrepareResult {
   ok: true;
+  keeperhubWorkflowId: string;
+  approvalHash: string;
+  inputAmountRaw: string;
   tokenAddress: string;
   routerAddress: string;
-  network: string;
-  inputAmountRaw: string;
-  requiredAllowance: string;
-  currentAllowance: string;
   approvalNeeded: boolean;
-  commands: Hex;
-  inputs: Hex[];
+  securityPlan: { commands: string };
 }
 
-type Stage = "form" | "preparing" | "prepared" | "executing" | "success" | "error";
+interface ExecuteResult {
+  ok: true;
+  workflowId: string;
+  executionId: string;
+  status: string;
+  transactionHashes?: string[];
+}
 
 const HISTORY_LIMIT_DISPLAY = 5;
 
+type Stage = "form" | "preparing" | "prepared" | "executing" | "success" | "error";
+
 export default function SwapPage() {
   const hydrated = useHydrated();
-  const { address, isConnected, isConnecting, isWrongNetwork, isSwitching, hasInjectedProvider, connectWallet, switchToMainnet, connectError } =
-    useWallet();
+  const { address, isConnected } = useWallet();
 
   const [fromSymbol, setFromSymbol] = useState("USDC");
   const [toSymbol, setToSymbol] = useState("WETH");
@@ -84,14 +84,12 @@ export default function SwapPage() {
   const [amount, setAmount] = useState("1.2");
   const [stage, setStage] = useState<Stage>("form");
   const [prepared, setPrepared] = useState<PrepareResult | null>(null);
-  const [executingStep, setExecutingStep] = useState("");
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [txStatus, setTxStatus] = useState<string | null>(null);
+  const [executed, setExecuted] = useState<ExecuteResult | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
-  const [walletBalances, setWalletBalances] = useState<WalletBalances | null>(null);
-  const [balancesLoading, setBalancesLoading] = useState(false);
-  const [balancesBefore, setBalancesBefore] = useState<WalletBalances | null>(null);
+  const [walletState, setWalletState] = useState<WalletState | null>(null);
+  const [walletStateLoading, setWalletStateLoading] = useState(true);
+  const [balancesBefore, setBalancesBefore] = useState<WalletState | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>(() => (typeof window === "undefined" ? [] : loadHistory()));
 
   function recordHistory(entry: HistoryEntry) {
@@ -102,66 +100,69 @@ export default function SwapPage() {
     });
   }
 
-  async function loadBalances(addr: string) {
+  async function loadWalletState() {
     try {
-      const res = await fetch(`/api/onchain/balances?address=${addr}`);
+      const res = await fetch("/api/keeperhub/mainnet-wallet-state");
       const data = await res.json();
-      if (data.ok) setWalletBalances(data);
+      if (data.ok) setWalletState(data);
     } catch {
-      // Non-fatal — balance display is informational.
+      // Non-fatal — the balance display is informational, not required to swap.
+    } finally {
+      setWalletStateLoading(false);
     }
   }
 
   useEffect(() => {
-    if (!address) return;
     let cancelled = false;
-    fetch(`/api/onchain/balances?address=${address}`)
+    fetch("/api/keeperhub/mainnet-wallet-state")
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-        if (data.ok) setWalletBalances(data);
-        setBalancesLoading(false);
+        if (data.ok) setWalletState(data);
+        setWalletStateLoading(false);
       })
       .catch(() => {
-        if (!cancelled) setBalancesLoading(false);
+        if (!cancelled) setWalletStateLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [address]);
-
-  function toggleDirection() {
-    setFromSymbol(toSymbol);
-    setToSymbol(fromSymbol);
-    resetFlow();
-  }
+  }, []);
 
   function handleFromChange(symbol: string) {
     setFromSymbol(symbol);
     if (symbol === toSymbol) {
-      const alt = SUPPORTED_TOKENS.find((t) => t.symbol !== symbol);
-      if (alt) setToSymbol(alt.symbol);
+      const alternative = SUPPORTED_TOKENS.find((t) => t.symbol !== symbol);
+      if (alternative) setToSymbol(alternative.symbol);
     }
   }
 
   function handleToChange(symbol: string) {
     setToSymbol(symbol);
     if (symbol === fromSymbol) {
-      const alt = SUPPORTED_TOKENS.find((t) => t.symbol !== symbol);
-      if (alt) setFromSymbol(alt.symbol);
+      const alternative = SUPPORTED_TOKENS.find((t) => t.symbol !== symbol);
+      if (alternative) setFromSymbol(alternative.symbol);
     }
   }
 
+  function toggleDirection() {
+    setFromSymbol(toSymbol);
+    setToSymbol(fromSymbol);
+    setStage("form");
+    setPrepared(null);
+    setExecuted(null);
+    setErrorDetail(null);
+  }
+
   async function handlePrepare() {
-    if (!address) return;
     setStage("preparing");
     setErrorDetail(null);
-    setBalancesBefore(walletBalances);
+    setBalancesBefore(walletState);
     try {
-      const res = await fetch("/api/wayfinder/prepare-swap", {
+      const res = await fetch("/api/keeperhub/prepare-mainnet-swap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromToken: fromToken.wayfinderId, toToken: toToken.wayfinderId, amount, walletAddress: address }),
+        body: JSON.stringify({ fromToken: fromToken.wayfinderId, toToken: toToken.wayfinderId, amount }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -178,66 +179,68 @@ export default function SwapPage() {
   }
 
   async function handleExecute() {
-    if (!prepared || !address) return;
+    if (!prepared) return;
     setStage("executing");
     setErrorDetail(null);
-    setTxHash(null);
-    setTxStatus(null);
-
-    const amountLabel = `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`;
-    const historyBase = { fromSymbol: fromToken.symbol, toSymbol: toToken.symbol };
-
     try {
-      if (prepared.approvalNeeded) {
-        setExecutingStep("Confirm the approval in your wallet…");
-        const approveHash = await writeContract(wagmiConfig, {
-          address: prepared.tokenAddress as Hex,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [prepared.routerAddress as Hex, BigInt(prepared.requiredAllowance)],
-        });
-        setExecutingStep("Confirming your approval on-chain…");
-        await waitForTransactionReceipt(wagmiConfig, { hash: approveHash });
-      }
-
-      setExecutingStep("Confirm the swap in your wallet…");
-      const swapHash = await writeContract(wagmiConfig, {
-        address: prepared.routerAddress as Hex,
-        abi: EXECUTE_ABI,
-        functionName: "execute",
-        args: [prepared.commands, prepared.inputs],
+      const res = await fetch("/api/keeperhub/execute-mainnet-swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowId: prepared.keeperhubWorkflowId, approvedHash: prepared.approvalHash }),
       });
-      setTxHash(swapHash);
-      setExecutingStep("Confirming your swap on-chain…");
-      const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: swapHash });
-      setTxStatus(receipt.status);
+      const data = await res.json();
+      const amountLabel = `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`;
+      const historyBase = { fromSymbol: fromToken.symbol, toSymbol: toToken.symbol, workflowId: prepared.keeperhubWorkflowId };
 
-      if (receipt.status === "success") {
-        setStage("success");
-        recordHistory({ timestamp: Date.now(), amountLabel, status: "success", txHash: swapHash, ...historyBase });
-      } else {
-        setErrorDetail("The swap did not succeed on-chain. Gas was spent, but the swap itself reverted — no funds beyond gas were lost.");
+      if (!res.ok || !data.ok) {
+        // Request-level failure (approval invalidated, KeeperHub API error,
+        // poll timeout) — no on-chain execution result exists to show.
+        setErrorDetail(data.error ?? "Execution failed.");
         setStage("error");
-        recordHistory({ timestamp: Date.now(), amountLabel, status: "reverted", txHash: swapHash, ...historyBase });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "failed", error: data.error, ...historyBase });
+        loadWalletState();
+        return;
       }
-      loadBalances(address);
+
+      // KeeperHub can return HTTP 200 with ok:true even when the workflow
+      // itself reverted on-chain — ok:true only means the API call worked,
+      // not that the swap succeeded. status must be checked separately.
+      // Either way, a real execution ran and data carries the real tx hash,
+      // so it's kept and shown regardless of outcome.
+      setExecuted(data);
+      const txHash = data.transactionHashes?.[0];
+
+      if (data.status === "success") {
+        setStage("success");
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "success", txHash, ...historyBase });
+      } else {
+        setErrorDetail(
+          `The swap did not succeed (KeeperHub status: "${data.status ?? "unknown"}"). This was a real on-chain attempt — gas was spent, but the swap itself reverted.`,
+        );
+        setStage("error");
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "reverted", txHash, ...historyBase });
+      }
+      loadWalletState();
     } catch (err) {
-      const rejected =
-        err instanceof Error && (err.message.toLowerCase().includes("user rejected") || err.message.toLowerCase().includes("user denied"));
-      const message = rejected ? "You declined the signature request in your wallet." : err instanceof Error ? err.message : "Request failed.";
+      const message = err instanceof Error ? err.message : "Request failed.";
       setErrorDetail(message);
       setStage("error");
-      if (!rejected) {
-        recordHistory({ timestamp: Date.now(), amountLabel, status: "failed", error: message, ...historyBase });
-      }
+      recordHistory({
+        timestamp: Date.now(),
+        amountLabel: `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`,
+        fromSymbol: fromToken.symbol,
+        toSymbol: toToken.symbol,
+        status: "failed",
+        workflowId: prepared.keeperhubWorkflowId,
+        error: message,
+      });
     }
   }
 
-  function resetFlow() {
+  function reset() {
     setStage("form");
     setPrepared(null);
-    setTxHash(null);
-    setTxStatus(null);
+    setExecuted(null);
     setErrorDetail(null);
   }
 
@@ -248,273 +251,233 @@ export default function SwapPage() {
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Real execution — your wallet, your funds"
+        eyebrow="Real execution — Ethereum mainnet"
         title={`Swap ${fromToken.symbol} → ${toToken.symbol}`}
-        description="A real Wayfinder quote, decoded and verified, then signed directly by your own wallet. Mastra never holds or spends your funds — you approve and execute every step yourself."
+        description="A real Wayfinder quote, decoded and passed through unmodified to a real KeeperHub workflow. Every number below comes from a live API or on-chain read — nothing here is simulated."
         action={<StatusPill tone="wayfinder" dot>Mainnet</StatusPill>}
       />
 
-      {!isConnected ? (
-        <div className="card flex flex-col items-center gap-4 px-8 py-16 text-center">
-          <p className="max-w-sm text-sm text-text-secondary">
-            Connect your own wallet to swap. This is self-custodial — your wallet signs and pays for your own swap
-            directly on-chain. Mastra never holds your funds.
-          </p>
-          {!hasInjectedProvider ? (
-            <a
-              href="https://metamask.io/download/"
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-accent/50"
-            >
-              No wallet detected — install MetaMask
-            </a>
-          ) : (
-            <button
-              onClick={connectWallet}
-              disabled={isConnecting}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isConnecting ? "Connecting…" : "Connect Wallet"}
-            </button>
-          )}
-          {connectError && <p className="max-w-sm text-xs text-danger">{connectError.message}</p>}
-        </div>
-      ) : isWrongNetwork ? (
-        <div className="card flex flex-col items-center gap-4 px-8 py-16 text-center">
-          <p className="max-w-sm text-sm text-text-secondary">
-            Your wallet is connected to the wrong network. Real swaps here happen on Ethereum mainnet — switch to
-            continue.
-          </p>
-          <button
-            onClick={switchToMainnet}
-            disabled={isSwitching}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
-          >
-            {isSwitching ? "Switching…" : "Switch to Ethereum Mainnet"}
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <StatCard label="Your wallet" value={shortHash(address ?? "", 6, 4)} mono />
-            {SUPPORTED_TOKENS.map((token) => (
-              <StatCard
-                key={token.symbol}
-                label={`${token.symbol} balance`}
-                value={walletBalances ? `${formatUnits(walletBalances.balances[token.symbol] ?? "0", token.decimals)} ${token.symbol}` : "—"}
-                loading={balancesLoading}
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <StatCard label="KeeperHub execution wallet" value={walletState ? shortHash(walletState.executionWallet, 6, 4) : "—"} mono loading={walletStateLoading} />
+        {SUPPORTED_TOKENS.map((token) => (
+          <StatCard
+            key={token.symbol}
+            label={`${token.symbol} balance`}
+            value={walletState ? `${formatUnits(walletState.balances[token.symbol] ?? "0", token.decimals)} ${token.symbol}` : "—"}
+            loading={walletStateLoading}
+          />
+        ))}
+      </div>
+
+      <div className="mb-6 rounded-lg border border-wayfinder/30 bg-wayfinder-dim px-4 py-2.5 text-xs text-text-secondary">
+        <span className="font-medium text-wayfinder">Execution runs through KeeperHub&apos;s own non-custodial wallet</span>, not
+        your connected wallet — signing and gas are sponsored by KeeperHub. Your browser wallet
+        {isConnected ? <> (<span className="font-mono">{shortHash(address ?? "", 4, 4)}</span>)</> : ""} is identity/context only
+        and never signs this transaction.
+      </div>
+
+      <div className="card p-6">
+        {stage === "form" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-end gap-3">
+              <label className="flex flex-1 flex-col gap-1.5 text-sm text-text-secondary">
+                From
+                <select
+                  value={fromSymbol}
+                  onChange={(e) => handleFromChange(e.target.value)}
+                  className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
+                >
+                  {SUPPORTED_TOKENS.map((t) => (
+                    <option key={t.symbol} value={t.symbol}>
+                      {t.symbol} — {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="button"
+                onClick={toggleDirection}
+                title="Reverse direction"
+                className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border-strong text-text-secondary transition-colors hover:border-accent/50 hover:text-accent"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path
+                    d="M3 5.5h8m0 0-2.5-2.5M11 5.5 8.5 8M11 8.5H3m0 0 2.5 2.5M3 8.5 5.5 6"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
+              <label className="flex flex-1 flex-col gap-1.5 text-sm text-text-secondary">
+                To
+                <select
+                  value={toSymbol}
+                  onChange={(e) => handleToChange(e.target.value)}
+                  className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
+                >
+                  {SUPPORTED_TOKENS.map((t) => (
+                    <option key={t.symbol} value={t.symbol}>
+                      {t.symbol} — {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-1.5 text-sm text-text-secondary">
+              Amount ({fromToken.symbol})
+              <input
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+                className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
               />
-            ))}
+            </label>
+            <button
+              onClick={handlePrepare}
+              disabled={!amount || Number(amount) <= 0}
+              className="w-fit rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Get real quote
+            </button>
           </div>
+        )}
 
-          <div className="mb-6 rounded-lg border border-wayfinder/30 bg-wayfinder-dim px-4 py-2.5 text-xs text-text-secondary">
-            <span className="font-medium text-wayfinder">Self-custodial:</span> Mastra never holds your funds and
-            never signs on your behalf. Your wallet (<span className="font-mono">{shortHash(address ?? "", 4, 4)}</span>)
-            signs the approval and the swap directly — you can review the exact route below before either signature.
+        {stage === "preparing" && (
+          <div className="flex items-center justify-center gap-3 py-10 text-center text-sm text-text-secondary">
+            <span className="h-4 w-4 shrink-0 rounded-full border-2 border-accent border-t-transparent spin-slow" />
+            Requesting a real Wayfinder quote and creating the KeeperHub workflow…
           </div>
+        )}
 
-          <div className="card p-6">
-            {stage === "form" && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-end gap-3">
-                  <label className="flex flex-1 flex-col gap-1.5 text-sm text-text-secondary">
-                    From
-                    <select
-                      value={fromSymbol}
-                      onChange={(e) => handleFromChange(e.target.value)}
-                      className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
-                    >
-                      {SUPPORTED_TOKENS.map((t) => (
-                        <option key={t.symbol} value={t.symbol}>
-                          {t.symbol} — {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+        {stage === "prepared" && prepared && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary">Ready to execute</span>
+              <StatusPill tone="success" dot>Real quote received</StatusPill>
+            </div>
 
-                  <button
-                    type="button"
-                    onClick={toggleDirection}
-                    title="Reverse direction"
-                    className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border-strong text-text-secondary transition-colors hover:border-accent/50 hover:text-accent"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path
-                        d="M3 5.5h8m0 0-2.5-2.5M11 5.5 8.5 8M11 8.5H3m0 0 2.5 2.5M3 8.5 5.5 6"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+              <Row label="Spending" value={`${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`} />
+              <Row label="Router" value={shortHash(prepared.routerAddress, 6, 4)} mono verified />
+              <Row label="Route" value={describeCommands(prepared.securityPlan.commands)} />
+              <Row label="Approval needed" value={prepared.approvalNeeded ? "Yes — included in this workflow" : "No — existing allowance sufficient"} />
+              <Row label="Workflow ID" value={prepared.keeperhubWorkflowId} mono />
+              <Row label="Approval hash" value={shortHash(prepared.approvalHash, 8, 6)} mono />
+            </div>
 
-                  <label className="flex flex-1 flex-col gap-1.5 text-sm text-text-secondary">
-                    To
-                    <select
-                      value={toSymbol}
-                      onChange={(e) => handleToChange(e.target.value)}
-                      className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
-                    >
-                      {SUPPORTED_TOKENS.map((t) => (
-                        <option key={t.symbol} value={t.symbol}>
-                          {t.symbol} — {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+            <p className="text-xs text-text-muted">
+              This hash is recomputed from what&apos;s actually stored in KeeperHub immediately before execution — if
+              anything about this workflow changes between now and then, execution is refused automatically.
+            </p>
 
-                <label className="flex flex-col gap-1.5 text-sm text-text-secondary">
-                  Amount ({fromToken.symbol})
-                  <input
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    inputMode="decimal"
-                    className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
-                  />
-                </label>
-                <button
-                  onClick={handlePrepare}
-                  disabled={!amount || Number(amount) <= 0}
-                  className="w-fit rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Get real quote
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={reset}
+                className="rounded-lg border border-border-strong px-5 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:border-danger/50 hover:text-danger"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExecute}
+                className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Confirm &amp; Execute on mainnet
+              </button>
+            </div>
+          </div>
+        )}
+
+        {stage === "executing" && (
+          <div className="flex items-center justify-center gap-3 py-10 text-center text-sm text-text-secondary">
+            <span className="h-4 w-4 shrink-0 rounded-full border-2 border-accent border-t-transparent spin-slow" />
+            Executing on Ethereum mainnet — this sends a real transaction…
+          </div>
+        )}
+
+        {stage === "success" && executed && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary">Swap confirmed</span>
+              <StatusPill tone="success" dot>{executed.status}</StatusPill>
+            </div>
+
+            {executed.transactionHashes?.[0] && (
+              <a
+                href={`https://etherscan.io/tx/${executed.transactionHashes[0]}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3 text-sm font-medium text-success hover:border-success/50"
+              >
+                <span className="font-mono text-xs">{shortHash(executed.transactionHashes[0], 10, 8)}</span>
+                <span>View on Etherscan →</span>
+              </a>
             )}
 
-            {stage === "preparing" && (
-              <div className="flex items-center justify-center gap-3 py-10 text-center text-sm text-text-secondary">
-                <span className="h-4 w-4 shrink-0 rounded-full border-2 border-accent border-t-transparent spin-slow" />
-                Requesting a real Wayfinder quote…
-              </div>
-            )}
-
-            {stage === "prepared" && prepared && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-text-primary">Ready to sign</span>
-                  <StatusPill tone="success" dot>Real quote received</StatusPill>
-                </div>
-
-                <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
-                  <Row label="Spending" value={`${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`} />
-                  <Row label="Router" value={shortHash(prepared.routerAddress, 6, 4)} mono verified />
-                  <Row label="Route" value={describeCommands(prepared.commands)} />
+            {balancesBefore && walletState && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+                {SUPPORTED_TOKENS.map((token) => (
                   <Row
-                    label="Approval needed"
-                    value={prepared.approvalNeeded ? "Yes — you'll sign this first" : "No — existing allowance is sufficient"}
+                    key={token.symbol}
+                    label={`${token.symbol} balance`}
+                    value={`${formatUnits(balancesBefore.balances[token.symbol] ?? "0", token.decimals)} → ${formatUnits(walletState.balances[token.symbol] ?? "0", token.decimals)}`}
                   />
-                </div>
-
-                <p className="text-xs text-text-muted">
-                  {prepared.approvalNeeded
-                    ? "You'll be asked to sign two transactions: an approval, then the swap itself. Both happen in your own wallet."
-                    : "You'll be asked to sign one transaction: the swap itself, in your own wallet."}
-                </p>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={resetFlow}
-                    className="rounded-lg border border-border-strong px-5 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:border-danger/50 hover:text-danger"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleExecute}
-                    className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    Confirm &amp; sign in wallet
-                  </button>
-                </div>
+                ))}
               </div>
             )}
 
-            {stage === "executing" && (
-              <div className="flex flex-col items-center justify-center gap-3 py-10 text-center text-sm text-text-secondary">
-                <span className="h-4 w-4 shrink-0 rounded-full border-2 border-accent border-t-transparent spin-slow" />
-                {executingStep}
-              </div>
-            )}
-
-            {stage === "success" && txHash && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-text-primary">Swap confirmed</span>
-                  <StatusPill tone="success" dot>{txStatus}</StatusPill>
-                </div>
-
-                <a
-                  href={`https://etherscan.io/tx/${txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3 text-sm font-medium text-success hover:border-success/50"
-                >
-                  <span className="font-mono text-xs">{shortHash(txHash, 10, 8)}</span>
-                  <span>View on Etherscan →</span>
-                </a>
-
-                {balancesBefore && walletBalances && (
-                  <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
-                    {SUPPORTED_TOKENS.map((token) => (
-                      <Row
-                        key={token.symbol}
-                        label={`${token.symbol} balance`}
-                        value={`${formatUnits(balancesBefore.balances[token.symbol] ?? "0", token.decimals)} → ${formatUnits(walletBalances.balances[token.symbol] ?? "0", token.decimals)}`}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                <button
-                  onClick={resetFlow}
-                  className="w-fit rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  Swap again
-                </button>
-              </div>
-            )}
-
-            {stage === "error" && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-text-primary">{txHash ? "Swap reverted on-chain" : "Could not execute"}</span>
-                  {txStatus && <StatusPill tone="danger" dot>{txStatus}</StatusPill>}
-                </div>
-
-                <p className="text-sm text-danger">{errorDetail}</p>
-
-                {txHash && (
-                  <a
-                    href={`https://etherscan.io/tx/${txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between rounded-lg border border-danger/30 bg-danger-dim px-4 py-3 text-sm font-medium text-danger hover:border-danger/50"
-                  >
-                    <span className="font-mono text-xs">{shortHash(txHash, 10, 8)}</span>
-                    <span>View on Etherscan →</span>
-                  </a>
-                )}
-
-                {prepared && (
-                  <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
-                    <Row label="Route attempted" value={describeCommands(prepared.commands)} />
-                  </div>
-                )}
-
-                <button
-                  onClick={resetFlow}
-                  className="w-fit rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-accent/50"
-                >
-                  Start over
-                </button>
-              </div>
-            )}
+            <button
+              onClick={reset}
+              className="w-fit rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              Swap again
+            </button>
           </div>
-        </>
-      )}
+        )}
+
+        {stage === "error" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary">
+                {executed ? "Swap reverted on-chain" : "Could not execute"}
+              </span>
+              {executed && <StatusPill tone="danger" dot>{executed.status}</StatusPill>}
+            </div>
+
+            <p className="text-sm text-danger">{errorDetail}</p>
+
+            {executed?.transactionHashes?.[0] && (
+              <a
+                href={`https://etherscan.io/tx/${executed.transactionHashes[0]}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between rounded-lg border border-danger/30 bg-danger-dim px-4 py-3 text-sm font-medium text-danger hover:border-danger/50"
+              >
+                <span className="font-mono text-xs">{shortHash(executed.transactionHashes[0], 10, 8)}</span>
+                <span>View on Etherscan →</span>
+              </a>
+            )}
+
+            {prepared && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+                <Row label="Route attempted" value={describeCommands(prepared.securityPlan.commands)} />
+                <Row label="Workflow ID" value={prepared.keeperhubWorkflowId} mono />
+              </div>
+            )}
+
+            <button
+              onClick={reset}
+              className="w-fit rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-accent/50"
+            >
+              Start over
+            </button>
+          </div>
+        )}
+      </div>
 
       {recentHistory.length > 0 && (
         <div className="mt-8">

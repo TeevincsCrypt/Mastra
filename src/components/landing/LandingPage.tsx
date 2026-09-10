@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const GREEN = "#059669";
+
 export function LandingPage({ onConnect }: { onConnect: () => void }) {
   return (
     <div className="bg-white text-slate-900">
@@ -28,21 +30,20 @@ function Hero({ onConnect }: { onConnect: () => void }) {
         <div className="relative">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-white pulse-dot" />
-            Wayfinder-Routed, Self-Custodial Execution
+            Wayfinder × KeeperHub Execution Center
           </span>
 
           <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-white sm:text-5xl">
-            Approve Every Swap, Fast and Verified, with Mastra
+            Approve Every Agent Workflow, Fast and Verified, with Mastra
           </h1>
 
           <p className="mx-auto mt-5 max-w-xl text-sm text-emerald-50/90 sm:text-base">
-            Wayfinder finds the route. Mastra shows you exactly what it will do. Your own wallet
-            signs and executes it on real Ethereum mainnet — nothing reinterpreted, nothing held
-            in escrow.
+            Wayfinder finds the route. Mastra shows you exactly what it will do. KeeperHub
+            executes only what you approved on real Ethereum mainnet — nothing reinterpreted.
           </p>
 
           <div className="mx-auto mt-8 flex w-fit flex-col items-center gap-3 rounded-2xl border border-white/20 bg-white/10 p-2 pl-5 backdrop-blur-sm sm:flex-row">
-            <span className="text-sm text-white/80">Self-custodial · Ethereum mainnet</span>
+            <span className="text-sm text-white/80">Non-custodial · Ethereum mainnet</span>
             <button
               onClick={onConnect}
               className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 transition-transform hover:scale-[1.02] active:scale-[0.98]"
@@ -130,6 +131,7 @@ function FloatCard({ children, className = "" }: { children: React.ReactNode; cl
 
 const INTEGRATIONS = [
   { name: "Wayfinder", color: "#a78bfa" },
+  { name: "KeeperHub", color: GREEN },
   { name: "Ethereum", color: "#8C8C8C" },
   { name: "Uniswap", color: "#FF007A" },
   { name: "Curve", color: "#3465A4" },
@@ -172,14 +174,14 @@ const TABS = [
     label: "Verify",
     icon: <ShieldIcon />,
     heading: "Checked against live chain state",
-    body: "The router is checked against a verified allowlist and your real on-chain allowance is read directly — before you're ever asked to sign anything.",
+    body: "The router is checked against a verified allowlist, your real on-chain allowance is read directly, and an approval-hash is computed over exactly what you're about to approve.",
   },
   {
     key: "execute",
     label: "Execution",
     icon: <BoltIcon />,
-    heading: "You sign exactly what you reviewed",
-    body: "There's no gap between review and execution — your wallet signs the exact same calldata you just saw, in the same step. Mastra never holds your funds or signs on your behalf.",
+    heading: "Execution matches the review, exactly",
+    body: "Immediately before execution, that hash is recomputed against what's actually stored in KeeperHub — if anything changed since you approved it, execution is refused automatically.",
   },
 ];
 
@@ -230,7 +232,7 @@ function ApprovalSection() {
           Nothing executes until <span className="text-emerald-600">you approve it</span>
         </>
       }
-      body="Every real quote waits for your explicit decision. Cancel it and nothing happens. Confirm it and your own wallet signs and executes exactly that — down to the contract address."
+      body="Every proposed workflow waits for an explicit decision. Reject it and it goes nowhere. Approve it and KeeperHub executes exactly that — down to the contract address."
     >
       <div className="w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_25px_55px_-20px_rgba(15,23,42,0.2)]">
         <div className="flex items-center justify-between text-xs text-slate-400">
@@ -270,7 +272,7 @@ function VerifySection() {
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_25px_55px_-20px_rgba(15,23,42,0.2)]">
           <div className="text-xs font-medium text-slate-400">Pre-execution checks</div>
           <div className="mt-3 space-y-2.5">
-            {["Router address verified", "Real on-chain allowance checked", "You sign the exact calldata shown"].map((c) => (
+            {["Router address verified", "Real on-chain allowance checked", "Approval-hash matches exactly"].map((c) => (
               <div key={c} className="flex items-center gap-2 text-xs text-slate-600">
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                   <CheckIcon />
@@ -301,7 +303,7 @@ function FloatingChip({ children, className = "" }: { children: React.ReactNode;
 /* -------------------------------- Execute -------------------------------- */
 
 const EXECUTE_FEATURES = [
-  { label: "Self-custodial execution", icon: <BoltIcon /> },
+  { label: "Exact workflow execution", icon: <BoltIcon /> },
   { label: "Full audit trail", icon: <DocIcon /> },
   { label: "Real-time status", icon: <PulseIcon /> },
   { label: "No blind signing", icon: <ShieldIcon /> },
@@ -317,8 +319,8 @@ function ExecuteSection() {
             From approval to <span className="text-emerald-600">confirmation</span> in seconds
           </h2>
           <p className="mt-3 max-w-md text-sm text-slate-500">
-            Watch it confirm live as your wallet signs and broadcasts the swap — then land straight in Mastra&apos;s
-            audit trail with the real transaction hash.
+            Watch each step confirm live as KeeperHub executes — then land straight in Mastra&apos;s audit trail with
+            the real transaction hash.
           </p>
           <div className="mt-6 grid grid-cols-2 gap-3">
             {EXECUTE_FEATURES.map((f) => (
@@ -397,7 +399,7 @@ function Footer() {
               { label: "Mastra AI", href: "/ai" },
             ]}
           />
-          <FooterColumn title="Ecosystem" links={[{ label: "Wayfinder", href: "#" }, { label: "Ethereum", href: "#" }]} />
+          <FooterColumn title="Ecosystem" links={[{ label: "Wayfinder", href: "#" }, { label: "KeeperHub", href: "#" }]} />
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Connect</div>
             <div className="mt-3 flex gap-2">

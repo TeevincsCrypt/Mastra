@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mastra — Self-Custodial Execution Control",
-  description: "Wayfinder finds the route. Mastra verifies it. Your own wallet executes it.",
+  title: "Mastra — Wayfinder × KeeperHub Execution Control",
+  description: "Wayfinder thinks. Mastra verifies. KeeperHub executes.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
