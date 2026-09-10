@@ -59,7 +59,15 @@ function shapeSummary(value: unknown, depth = 3): unknown {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = shapeSummary(v, depth - 1);
     return out;
   }
-  if (typeof value === "string") return value.length > 24 ? `string(${value.length})` : value;
+  if (typeof value === "string") {
+    // Only redact what's actually large/sensitive (calldata-shaped hex
+    // blobs, or anything unreasonably long) — a short human-readable error
+    // message is exactly the diagnostic signal this function exists to
+    // preserve, and redacting it (the original 24-char cutoff did, hiding
+    // a real "token_error" message this way) defeats the purpose.
+    const looksLikeHexBlob = /^0x[0-9a-fA-F]{40,}$/.test(value);
+    return looksLikeHexBlob || value.length > 300 ? `string(${value.length})` : value;
+  }
   return value;
 }
 

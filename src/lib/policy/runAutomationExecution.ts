@@ -6,6 +6,7 @@ import { getAutomation, updateAutomation } from "@/lib/store/automations";
 import { getPolicy } from "@/lib/store/policies";
 import { createExecution, updateExecution, sumSpentSince } from "@/lib/store/executions";
 import { recordAuditEvent } from "@/lib/store/audit";
+import { findToken } from "@/lib/tokens";
 import type { ExecutionRecord, PolicyDecision } from "@/lib/store/types";
 
 /**
@@ -113,8 +114,21 @@ export async function runAutomationExecution(automationId: string, callerAddress
     return { blocked: !decision.approved, decision };
   };
 
+  // Wayfinder's onchain_quote_swap expects its own canonical token id
+  // (e.g. "weth-ethereum"), not the bare symbol stored on the automation
+  // ("WETH") — the working /swap flow already maps through this same
+  // findToken().wayfinderId; this path was passing the raw symbol straight
+  // through, which Wayfinder can't resolve (surfaces as a token_error).
+  const fromTokenInfo = findToken(automation.fromToken);
+  const toTokenInfo = findToken(automation.toToken);
+  if (!fromTokenInfo || !toTokenInfo) {
+    const error = `Unsupported token symbol: ${!fromTokenInfo ? automation.fromToken : automation.toToken} is not in the supported token list.`;
+    await recordAuditEvent({ automationId, executionId: execution.id, type: "EXECUTION_FAILED", message: error });
+    return (await updateExecution(execution.id, { status: "failed", error, errorStage: "token_lookup", completedAt: Date.now() }))!;
+  }
+
   const prepared = await prepareMainnetSwapWorkflow(
-    { fromToken: automation.fromToken, toToken: automation.toToken, amount: automation.amount },
+    { fromToken: fromTokenInfo.wayfinderId, toToken: toTokenInfo.wayfinderId, amount: automation.amount },
     policyCheck,
   );
 
