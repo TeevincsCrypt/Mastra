@@ -72,14 +72,42 @@ export interface PreparedMainnetSwapFailure {
   error: string;
   attemptsLog?: AttemptLog;
   details?: unknown;
+  /** Present only when a policyCheck callback returned blocked=true — see that param below. */
+  policyBlocked?: boolean;
+  policyDecision?: unknown;
 }
 
-export async function prepareMainnetSwapWorkflow(params: {
-  fromToken: string;
-  toToken: string;
-  amount: string;
-  slippageBps?: number;
-}): Promise<PreparedMainnetSwap | PreparedMainnetSwapFailure> {
+/**
+ * Optional hook for the autonomous-finance control plane (see lib/policy/):
+ * called once per attempt, right after the route is decoded and the real
+ * on-chain allowance is known, but strictly BEFORE any KeeperHub workflow
+ * is created. If it returns blocked: true, prepareMainnetSwapWorkflow
+ * returns immediately with policyBlocked: true and KeeperHub's
+ * createWorkflow is never called — no workflow, no execution, nothing for
+ * KeeperHub to ever touch. Left undefined (the default), this function's
+ * behavior is byte-for-byte identical to before this hook existed — /swap's
+ * direct, non-automation calls are unaffected.
+ */
+export interface SwapPolicyCheckInput {
+  routerAddress: string;
+  network: string;
+  tokenAddress: string;
+  inputAmountRaw: string;
+  commands: string;
+  slippageBps: number;
+  quoteFetchedAt: number;
+}
+export type SwapPolicyCheck = (input: SwapPolicyCheckInput) => Promise<{ blocked: boolean; decision: unknown }>;
+
+export async function prepareMainnetSwapWorkflow(
+  params: {
+    fromToken: string;
+    toToken: string;
+    amount: string;
+    slippageBps?: number;
+  },
+  policyCheck?: SwapPolicyCheck,
+): Promise<PreparedMainnetSwap | PreparedMainnetSwapFailure> {
   let executionWallet: string;
   try {
     const { body } = await getCurrentUser();
@@ -161,6 +189,29 @@ export async function prepareMainnetSwapWorkflow(params: {
     }
 
     const approvalNeeded = currentAllowance < requiredAllowance;
+
+    if (policyCheck) {
+      const quoteFetchedAt = Date.now();
+      const policyResult = await policyCheck({
+        routerAddress: calldata.to,
+        network,
+        tokenAddress,
+        inputAmountRaw: String(inputAmountRaw),
+        commands: decoded.commands,
+        slippageBps: params.slippageBps ?? 50,
+        quoteFetchedAt,
+      });
+      if (policyResult.blocked) {
+        return {
+          ok: false,
+          stage: "policy_blocked",
+          error: "Blocked by policy — KeeperHub was never called.",
+          attemptsLog,
+          policyBlocked: true,
+          policyDecision: policyResult.decision,
+        };
+      }
+    }
 
     const executeAction = buildExecuteAction({
       routerAddress: calldata.to,
