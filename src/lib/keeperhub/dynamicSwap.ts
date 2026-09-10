@@ -186,16 +186,19 @@ export async function prepareMainnetSwapWorkflow(params: {
     // exactly what was specified: target contract, network, function,
     // commands, inputs, the approval action if one is included, and
     // amounts. Nothing about the swap can change post-approval without
-    // invalidating this hash.
-    const securityPlan = {
+    // invalidating this hash. Built via buildSecurityPlan() so this is
+    // byte-identical to what reconstructSecurityPlanFromWorkflow() produces
+    // later from the stored workflow — see that function's comment for why
+    // (address checksum-casing mismatch caused a real false-positive here).
+    const securityPlan = buildSecurityPlan({
       targetContract: calldata.to,
       network,
-      function: "execute",
       commands: decoded.commands,
       inputs: decoded.inputs,
       approvalAction: approveAction,
-      amounts: { tokenAddress, inputAmountRaw: String(inputAmountRaw) },
-    };
+      tokenAddress,
+      inputAmountRaw: String(inputAmountRaw),
+    });
     const approvalHash = await hashApprovedWorkflow(securityPlan);
 
     try {
@@ -240,6 +243,43 @@ export async function prepareMainnetSwapWorkflow(params: {
   };
 }
 
+/**
+ * Builds the security-plan object that gets hashed, used identically by
+ * both prepareMainnetSwapWorkflow (at "approval" time) and
+ * reconstructSecurityPlanFromWorkflow (immediately before execute). All
+ * address fields are lowercased before hashing: Ethereum addresses are
+ * case-insensitive on-chain (EIP-55 checksumming is a client-side
+ * typo-detection convention, not part of identity), but a plain string
+ * hash is case-sensitive — without this, the exact same real address
+ * arriving via two different code paths (a raw string from Wayfinder's
+ * JSON vs. viem's decodeAbiParameters, which checksums by default)
+ * produces two different hashes for an identical, unchanged transaction.
+ * This caused a real false-positive APPROVAL INVALIDATED on the first
+ * live execute attempt — fixed by normalizing consistently here, in the
+ * one place both callers share, rather than by patching either call site.
+ */
+function buildSecurityPlan(params: {
+  targetContract: string;
+  network: string;
+  commands: string;
+  inputs: string[];
+  approvalAction: Web3WriteContractAction | null;
+  tokenAddress: string;
+  inputAmountRaw: string;
+}): Record<string, unknown> {
+  return {
+    targetContract: params.targetContract.toLowerCase(),
+    network: params.network,
+    function: "execute",
+    commands: params.commands,
+    inputs: params.inputs,
+    approvalAction: params.approvalAction
+      ? { ...params.approvalAction, contractAddress: params.approvalAction.contractAddress.toLowerCase() }
+      : null,
+    amounts: { tokenAddress: params.tokenAddress.toLowerCase(), inputAmountRaw: params.inputAmountRaw },
+  };
+}
+
 interface ReconstructedPlan {
   approvalAction: Web3WriteContractAction | null;
   executeAction: Web3WriteContractAction;
@@ -247,7 +287,7 @@ interface ReconstructedPlan {
 }
 
 /**
- * Rebuilds the exact security-plan object from what's ACTUALLY persisted in
+ * Rebuilds the security-plan object from what's ACTUALLY persisted in
  * KeeperHub for a given workflow right now — NOT from a fresh Wayfinder
  * quote, which is never reproducible byte-for-byte (each quote embeds a
  * fresh requestId and time-sensitive routing data, so it would never match
@@ -282,15 +322,15 @@ function reconstructSecurityPlanFromWorkflow(workflow: Record<string, unknown>):
     inputs[0] as Hex,
   );
 
-  const securityPlan = {
+  const securityPlan = buildSecurityPlan({
     targetContract: executeAction.contractAddress,
     network: executeAction.network,
-    function: "execute",
     commands,
     inputs,
     approvalAction,
-    amounts: { tokenAddress, inputAmountRaw: inputAmountRaw.toString() },
-  };
+    tokenAddress,
+    inputAmountRaw: inputAmountRaw.toString(),
+  });
 
   return { approvalAction, executeAction, securityPlan };
 }
