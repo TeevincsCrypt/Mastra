@@ -274,21 +274,24 @@ function AuditRow({ event, last }: { event: AuditEvent; last?: boolean }) {
                 {a.routerAddress ? ` — router ${shortHash(a.routerAddress, 6, 4)}` : ""}: {String(a.outcome)}
               </div>
               {a.responseShape != null && (
-                <pre className="mt-0.5 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
-                  {JSON.stringify(a.responseShape, null, 1)}
-                </pre>
+                <details className="mt-0.5">
+                  <summary className="cursor-pointer select-none text-[10px] text-accent-strong hover:underline">View technical details</summary>
+                  <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
+                    {JSON.stringify(a.responseShape, null, 1)}
+                  </pre>
+                </details>
               )}
             </div>
           ))}
         </div>
       )}
       {keeperhubExecution != null && (
-        <div className="mt-1.5">
-          <div className="mb-0.5 text-[10px] text-text-muted">Full KeeperHub execution record:</div>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
+        <details className="mt-1.5">
+          <summary className="cursor-pointer select-none text-[10px] text-accent-strong hover:underline">View full KeeperHub execution record</summary>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
             {JSON.stringify(keeperhubExecution, null, 1)}
           </pre>
-        </div>
+        </details>
       )}
     </div>
   );
