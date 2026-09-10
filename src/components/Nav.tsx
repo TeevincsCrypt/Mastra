@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/policies", label: "Policies" },
   { href: "/audit", label: "Audit" },
   { href: "/integrations", label: "Integrations" },
+  { href: "/security", label: "Security" },
   { href: "/swap", label: "Swap" },
   { href: "/ai", label: "Mastra AI" },
 ];

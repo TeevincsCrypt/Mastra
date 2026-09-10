@@ -15,6 +15,7 @@ export function useAuth() {
   const { signMessageAsync } = useSignMessage();
   const [authenticated, setAuthenticated] = useState(false);
   const [authenticatedAddress, setAuthenticatedAddress] = useState<string | null>(null);
+  const [isAuthorizedExecutor, setIsAuthorizedExecutor] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,10 +25,12 @@ export function useAuth() {
       .then((data) => {
         setAuthenticated(Boolean(data.authenticated));
         setAuthenticatedAddress(data.address ?? null);
+        setIsAuthorizedExecutor(Boolean(data.isAuthorizedExecutor));
       })
       .catch(() => {
         setAuthenticated(false);
         setAuthenticatedAddress(null);
+        setIsAuthorizedExecutor(false);
       });
   }, []);
 
@@ -65,6 +68,7 @@ export function useAuth() {
 
       setAuthenticated(true);
       setAuthenticatedAddress(verifyData.address);
+      refresh();
     } catch (err) {
       const rejected = err instanceof Error && err.message.toLowerCase().includes("user rejected");
       setError(rejected ? "You declined the signature request." : err instanceof Error ? err.message : "Sign-in failed.");
@@ -77,7 +81,16 @@ export function useAuth() {
     await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
     setAuthenticated(false);
     setAuthenticatedAddress(null);
+    setIsAuthorizedExecutor(false);
   }
 
-  return { authenticated: effectiveAuthenticated, authenticatedAddress, signingIn, error, signIn, signOut };
+  return {
+    authenticated: effectiveAuthenticated,
+    authenticatedAddress,
+    isAuthorizedExecutor: effectiveAuthenticated && isAuthorizedExecutor,
+    signingIn,
+    error,
+    signIn,
+    signOut,
+  };
 }
