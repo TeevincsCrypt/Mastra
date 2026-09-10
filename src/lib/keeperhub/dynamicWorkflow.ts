@@ -61,6 +61,45 @@ async function keeperFetch(path: string, init?: RequestInit): Promise<unknown> {
   return body;
 }
 
+interface StatusedResponse {
+  status: number;
+  body: unknown;
+}
+
+/** Same as keeperFetch, but returns the HTTP status alongside the body instead of discarding it — needed to report status explicitly for the /api/user diagnostics. */
+async function keeperFetchWithStatus(path: string, init?: RequestInit): Promise<StatusedResponse> {
+  const key = getApiKey();
+  let res: Response;
+  try {
+    res = await fetch(`${KEEPERHUB_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+  } catch (err) {
+    throw new KeeperHubError(
+      `Network error reaching KeeperHub (${init?.method ?? "GET"} ${path}): ${err instanceof Error ? err.message : String(err)}`,
+      0,
+    );
+  }
+
+  const text = await res.text();
+  let body: unknown = undefined;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+
+  return { status: res.status, body };
+}
+
 export interface Web3WriteContractAction {
   actionType: "web3/write-contract";
   contractAddress: string;
@@ -200,4 +239,24 @@ export async function getCreatedWorkflow(workflowId: string): Promise<unknown> {
  */
 export async function getWalletBalances(): Promise<unknown> {
   return keeperFetch("/api/user/wallet/balances");
+}
+
+/**
+ * GET /api/user — per the user's confirmation against KeeperHub's official
+ * docs, `walletAddress` on this response is the active organization's
+ * execution wallet: the one that signs and funds every workflow execution.
+ * This is the authoritative source for the address needed for the USDC
+ * allowance check ahead of Phase B.
+ */
+export async function getCurrentUser(): Promise<StatusedResponse> {
+  return keeperFetchWithStatus("/api/user");
+}
+
+/**
+ * GET /api/user/wallet — per the user's confirmation against KeeperHub's
+ * official docs, returns the organization's Turnkey wallet record
+ * (hasWallet, walletAddress, walletId, organizationId, isActive).
+ */
+export async function getUserWallet(): Promise<StatusedResponse> {
+  return keeperFetchWithStatus("/api/user/wallet");
 }
