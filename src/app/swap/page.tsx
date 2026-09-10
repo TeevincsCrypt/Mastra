@@ -18,6 +18,28 @@ import { StatusPill } from "@/components/StatusPill";
 const USDC_DECIMALS = 6;
 const WETH_DECIMALS = 18;
 
+interface TokenInfo {
+  wayfinderId: string;
+  symbol: string;
+  decimals: number;
+}
+
+const USDC_TOKEN: TokenInfo = { wayfinderId: "usd-coin-ethereum", symbol: "USDC", decimals: USDC_DECIMALS };
+const WETH_TOKEN: TokenInfo = { wayfinderId: "weth-ethereum", symbol: "WETH", decimals: WETH_DECIMALS };
+
+type Direction = "usdc-to-weth" | "weth-to-usdc";
+
+function tokensForDirection(direction: Direction): { from: TokenInfo; to: TokenInfo } {
+  return direction === "usdc-to-weth" ? { from: USDC_TOKEN, to: WETH_TOKEN } : { from: WETH_TOKEN, to: USDC_TOKEN };
+}
+
+// Default trade size per direction — small enough to be realistic against
+// the real, small balances this wallet actually holds in testing.
+const DEFAULT_AMOUNT: Record<Direction, string> = {
+  "usdc-to-weth": "1.2",
+  "weth-to-usdc": "0.0002",
+};
+
 // Display-only labels for this router's real Commands enum (verified against
 // its published source on Etherscan). Never used for trust decisions — the
 // backend's router allowlist is address-based (isVerifiedRouter), not this.
@@ -76,7 +98,7 @@ interface ExecuteResult {
 
 interface HistoryEntry {
   timestamp: number;
-  amountUsdc: string;
+  amountLabel: string;
   status: "success" | "reverted" | "failed";
   txHash?: string;
   workflowId?: string;
@@ -110,7 +132,9 @@ export default function SwapPage() {
   const hydrated = useHydrated();
   const { address, isConnected } = useWallet();
 
-  const [amount, setAmount] = useState("1.2");
+  const [direction, setDirection] = useState<Direction>("usdc-to-weth");
+  const { from: fromToken, to: toToken } = tokensForDirection(direction);
+  const [amount, setAmount] = useState(DEFAULT_AMOUNT["usdc-to-weth"]);
   const [stage, setStage] = useState<Stage>("form");
   const [prepared, setPrepared] = useState<PrepareResult | null>(null);
   const [executed, setExecuted] = useState<ExecuteResult | null>(null);
@@ -127,6 +151,16 @@ export default function SwapPage() {
       saveHistory(next);
       return next;
     });
+  }
+
+  function toggleDirection() {
+    const next: Direction = direction === "usdc-to-weth" ? "weth-to-usdc" : "usdc-to-weth";
+    setDirection(next);
+    setAmount(DEFAULT_AMOUNT[next]);
+    setStage("form");
+    setPrepared(null);
+    setExecuted(null);
+    setErrorDetail(null);
   }
 
   async function loadWalletState() {
@@ -166,7 +200,7 @@ export default function SwapPage() {
       const res = await fetch("/api/keeperhub/prepare-mainnet-swap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromToken: "usd-coin-ethereum", toToken: "weth-ethereum", amount }),
+        body: JSON.stringify({ fromToken: fromToken.wayfinderId, toToken: toToken.wayfinderId, amount }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -193,14 +227,14 @@ export default function SwapPage() {
         body: JSON.stringify({ workflowId: prepared.keeperhubWorkflowId, approvedHash: prepared.approvalHash }),
       });
       const data = await res.json();
-      const amountUsdc = formatUnits(prepared.inputAmountRaw, USDC_DECIMALS);
+      const amountLabel = `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`;
 
       if (!res.ok || !data.ok) {
         // Request-level failure (approval invalidated, KeeperHub API error,
         // poll timeout) — no on-chain execution result exists to show.
         setErrorDetail(data.error ?? "Execution failed.");
         setStage("error");
-        recordHistory({ timestamp: Date.now(), amountUsdc, status: "failed", workflowId: prepared.keeperhubWorkflowId, error: data.error });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "failed", workflowId: prepared.keeperhubWorkflowId, error: data.error });
         loadWalletState();
         return;
       }
@@ -215,13 +249,13 @@ export default function SwapPage() {
 
       if (data.status === "success") {
         setStage("success");
-        recordHistory({ timestamp: Date.now(), amountUsdc, status: "success", txHash, workflowId: prepared.keeperhubWorkflowId });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "success", txHash, workflowId: prepared.keeperhubWorkflowId });
       } else {
         setErrorDetail(
           `The swap did not succeed (KeeperHub status: "${data.status ?? "unknown"}"). This was a real on-chain attempt — gas was spent, but the swap itself reverted.`,
         );
         setStage("error");
-        recordHistory({ timestamp: Date.now(), amountUsdc, status: "reverted", txHash, workflowId: prepared.keeperhubWorkflowId });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "reverted", txHash, workflowId: prepared.keeperhubWorkflowId });
       }
       loadWalletState();
     } catch (err) {
@@ -230,7 +264,7 @@ export default function SwapPage() {
       setStage("error");
       recordHistory({
         timestamp: Date.now(),
-        amountUsdc: formatUnits(prepared.inputAmountRaw, USDC_DECIMALS),
+        amountLabel: `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`,
         status: "failed",
         workflowId: prepared.keeperhubWorkflowId,
         error: message,
@@ -251,7 +285,7 @@ export default function SwapPage() {
     <PageShell>
       <PageHeader
         eyebrow="Real execution — Ethereum mainnet"
-        title="Swap USDC → WETH"
+        title={`Swap ${fromToken.symbol} → ${toToken.symbol}`}
         description="A real Wayfinder quote, decoded and passed through unmodified to a real KeeperHub workflow. Every number below comes from a live API or on-chain read — nothing here is simulated."
         action={<StatusPill tone="wayfinder" dot>Mainnet</StatusPill>}
       />
@@ -272,8 +306,31 @@ export default function SwapPage() {
       <div className="card p-6">
         {stage === "form" && (
           <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-text-secondary">
+                <span className="font-semibold text-text-primary">{fromToken.symbol}</span> →{" "}
+                <span className="font-semibold text-text-primary">{toToken.symbol}</span>
+              </span>
+              <button
+                type="button"
+                onClick={toggleDirection}
+                title="Reverse direction"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-strong text-text-secondary transition-colors hover:border-accent/50 hover:text-accent"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path
+                    d="M3 5.5h8m0 0-2.5-2.5M11 5.5 8.5 8M11 8.5H3m0 0 2.5 2.5M3 8.5 5.5 6"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+
             <label className="flex flex-col gap-1.5 text-sm text-text-secondary">
-              Amount (USDC)
+              Amount ({fromToken.symbol})
               <input
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -306,7 +363,7 @@ export default function SwapPage() {
             </div>
 
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
-              <Row label="Spending" value={`${formatUnits(prepared.inputAmountRaw, USDC_DECIMALS)} USDC`} />
+              <Row label="Spending" value={`${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`} />
               <Row label="Router" value={shortHash(prepared.routerAddress, 6, 4)} mono verified />
               <Row label="Route" value={describeCommands(prepared.securityPlan.commands)} />
               <Row label="Approval needed" value={prepared.approvalNeeded ? "Yes — included in this workflow" : "No — existing allowance sufficient"} />
@@ -463,7 +520,7 @@ function HistoryRow({ entry, last }: { entry: HistoryEntry; last?: boolean }) {
     <div className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm ${last ? "" : "border-b border-border"}`}>
       <div className="flex items-center gap-3">
         <StatusPill tone={tone} dot>{label}</StatusPill>
-        <span className="text-text-secondary">{entry.amountUsdc} USDC</span>
+        <span className="text-text-secondary">{entry.amountLabel}</span>
         <span className="text-xs text-text-muted">{when}</span>
       </div>
       {entry.txHash ? (
