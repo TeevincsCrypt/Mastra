@@ -39,7 +39,11 @@ This matters more than the rest of the README, so it comes first.
   calls KeeperHub's real preflight and execute endpoints, and polls for the
   real terminal state. The transaction hash, gas used, and execution ID
   shown anywhere in the UI come directly from KeeperHub's own API response
-  — never generated or guessed locally.
+  — never generated or guessed locally. **Confirmed**: a real automation
+  execution through this exact pipeline (policy evaluation → KeeperHub
+  workflow → on-chain confirmation) produced
+  [`0xcf263352f2725ff990b6597598a44575fdf6a6522689767d3c78f298c349e3fe`](https://etherscan.io/tx/0xcf263352f2725ff990b6597598a44575fdf6a6522689767d3c78f298c349e3fe)
+  on Ethereum mainnet.
 - **The approval-hash invariant** (`src/lib/approvalHash.ts`) — a SHA-256 of
   the canonicalized approved proposal, recomputed immediately before
   execution and compared; any mismatch blocks execution with
