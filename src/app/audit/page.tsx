@@ -115,11 +115,18 @@ function EventRow({ event, automationName, last }: { event: AuditEvent; automati
       </div>
       <div className="mt-1 text-xs text-text-secondary">{event.message}</div>
       {attemptsLog && (
-        <div className="mt-1.5 flex flex-col gap-0.5 border-l-2 border-border pl-2">
+        <div className="mt-1.5 flex flex-col gap-1 border-l-2 border-border pl-2">
           {attemptsLog.map((a, i) => (
             <div key={i} className="text-[10px] text-text-muted">
-              attempt {String(a.attempt)}
-              {a.routerAddress ? ` — router ${shortHash(a.routerAddress, 6, 4)}` : ""}: {String(a.outcome)}
+              <div>
+                attempt {String(a.attempt)}
+                {a.routerAddress ? ` — router ${shortHash(a.routerAddress, 6, 4)}` : ""}: {String(a.outcome)}
+              </div>
+              {a.responseShape != null && (
+                <pre className="mt-0.5 max-h-32 overflow-auto rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
+                  {JSON.stringify(a.responseShape, null, 1)}
+                </pre>
+              )}
             </div>
           ))}
         </div>

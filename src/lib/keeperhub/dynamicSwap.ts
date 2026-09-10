@@ -42,7 +42,26 @@ import {
 
 const MAX_ATTEMPTS = 3;
 
-type AttemptLog = Array<{ attempt: number; routerAddress?: string; outcome: string }>;
+type AttemptLog = Array<{ attempt: number; routerAddress?: string; outcome: string; responseShape?: unknown }>;
+
+/**
+ * A compact, safe picture of an unknown object's real shape — key names
+ * and value types/lengths, never full string/hex contents (which could be
+ * a long calldata blob) — for diagnosing exactly what Wayfinder actually
+ * returned when the expected execution_quote.calldata path isn't there,
+ * without guessing blind or dumping raw payloads into logs/UI.
+ */
+function shapeSummary(value: unknown, depth = 3): unknown {
+  if (depth <= 0) return typeof value;
+  if (Array.isArray(value)) return `array(${value.length})${value.length ? `: ${JSON.stringify(shapeSummary(value[0], depth - 1))}` : ""}`;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = shapeSummary(v, depth - 1);
+    return out;
+  }
+  if (typeof value === "string") return value.length > 24 ? `string(${value.length})` : value;
+  return value;
+}
 
 export interface PreparedMainnetSwap {
   ok: true;
@@ -145,7 +164,11 @@ export async function prepareMainnetSwapWorkflow(
     const calldata = executionQuote?.calldata as Record<string, unknown> | undefined;
 
     if (!calldata || typeof calldata.data !== "string" || typeof calldata.to !== "string") {
-      attemptsLog.push({ attempt, outcome: "no execution_quote.calldata in response" });
+      attemptsLog.push({
+        attempt,
+        outcome: "no execution_quote.calldata in response",
+        responseShape: shapeSummary(raw),
+      });
       continue;
     }
 
