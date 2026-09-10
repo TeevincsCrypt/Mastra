@@ -28,6 +28,11 @@ export default function WayfinderTestPage() {
   const [validateResult, setValidateResult] = useState<unknown>(null);
   const [validateError, setValidateError] = useState<string | null>(null);
 
+  const [diagnoseWorkflowId, setDiagnoseWorkflowId] = useState("xt0w6n7m8o6u5419lz9iz");
+  const [diagnoseLoading, setDiagnoseLoading] = useState(false);
+  const [diagnoseResult, setDiagnoseResult] = useState<unknown>(null);
+  const [diagnoseError, setDiagnoseError] = useState<string | null>(null);
+
   async function runQuote() {
     setLoading(true);
     setError(null);
@@ -71,6 +76,29 @@ export default function WayfinderTestPage() {
       setValidateError(err instanceof Error ? err.message : "Request failed.");
     } finally {
       setValidateLoading(false);
+    }
+  }
+
+  async function runDiagnose() {
+    setDiagnoseLoading(true);
+    setDiagnoseError(null);
+    setDiagnoseResult(null);
+    try {
+      const res = await fetch("/api/keeperhub/diagnose-workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowId: diagnoseWorkflowId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDiagnoseError(JSON.stringify(data, null, 2));
+      } else {
+        setDiagnoseResult(data);
+      }
+    } catch (err) {
+      setDiagnoseError(err instanceof Error ? err.message : "Request failed.");
+    } finally {
+      setDiagnoseLoading(false);
     }
   }
 
@@ -236,6 +264,49 @@ export default function WayfinderTestPage() {
         {validateResult != null && (
           <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
             {JSON.stringify(validateResult, null, 2)}
+          </pre>
+        )}
+      </div>
+
+      <div className="mt-10 border-t border-border pt-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-muted">
+          Diagnostic — read-only, no execute/enable/update calls
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Diagnose a stored KeeperHub workflow</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Re-fetches a stored workflow via <code className="font-mono">GET /api/workflows/&#123;id&#125;</code> and
+          attempts <code className="font-mono">GET /api/user/wallet/balances</code> (not previously confirmed — this is
+          the live test) to try to discover KeeperHub&apos;s actual execution wallet address. Only GET calls — nothing
+          is executed, enabled, or updated.
+        </p>
+
+        <div className="card mt-4 flex flex-col gap-3 p-5">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Workflow ID
+            <input
+              value={diagnoseWorkflowId}
+              onChange={(e) => setDiagnoseWorkflowId(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <button
+            onClick={runDiagnose}
+            disabled={diagnoseLoading}
+            className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {diagnoseLoading ? "Requesting…" : "Diagnose (read-only)"}
+          </button>
+        </div>
+
+        {diagnoseError && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-danger/30 bg-danger-dim p-4 text-xs text-danger">
+            {diagnoseError}
+          </pre>
+        )}
+
+        {diagnoseResult != null && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
+            {JSON.stringify(diagnoseResult, null, 2)}
           </pre>
         )}
       </div>

@@ -188,3 +188,16 @@ export async function createWorkflow(definition: DynamicWorkflowDefinition): Pro
 export async function getCreatedWorkflow(workflowId: string): Promise<unknown> {
   return keeperFetch(`/api/workflows/${encodeURIComponent(workflowId)}`);
 }
+
+/**
+ * GET /api/user/wallet/balances — NOT independently confirmed against live
+ * docs (docs.keeperhub.com is unreachable from this environment); surfaced
+ * repeatedly in web search results as a real endpoint. This is the first
+ * live test of it. Read-only: fetches balance data, which necessarily
+ * requires KeeperHub to expose the wallet address the balances belong to.
+ * Used here only to attempt discovering the actual execution wallet
+ * address — never to move funds.
+ */
+export async function getWalletBalances(): Promise<unknown> {
+  return keeperFetch("/api/user/wallet/balances");
+}
