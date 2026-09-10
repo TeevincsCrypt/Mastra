@@ -154,9 +154,16 @@ export default function SwapPage() {
         body: JSON.stringify({ workflowId: prepared.keeperhubWorkflowId, approvedHash: prepared.approvalHash }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) {
-        setErrorDetail(data.error ?? "Execution failed.");
+      // KeeperHub can return HTTP 200 with ok:true even when the workflow
+      // itself reverted on-chain — ok:true only means the API call worked,
+      // not that the swap succeeded. status must be checked separately.
+      if (!res.ok || !data.ok || data.status !== "success") {
+        setErrorDetail(
+          data.error ??
+            `The swap did not succeed (KeeperHub status: "${data.status ?? "unknown"}"). This was a real on-chain attempt — gas was spent, but the swap itself reverted.`,
+        );
         setStage("error");
+        loadWalletState();
         return;
       }
       setExecuted(data);
