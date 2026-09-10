@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/keeperhub/dynamicWorkflow";
-import { getErc20Balance } from "@/lib/onchain/allowance";
+import { getErc20Balance, getEthBalance } from "@/lib/onchain/allowance";
 import { KeeperHubError } from "@/lib/keeperhub/client";
 import { SUPPORTED_TOKENS } from "@/lib/tokens";
 
@@ -31,16 +31,26 @@ export async function GET() {
   }
 
   try {
-    const balances = await Promise.all(
-      SUPPORTED_TOKENS.map(async (token) => ({
-        symbol: token.symbol,
-        balance: (await getErc20Balance(token.address, executionWallet)).toString(),
-      })),
-    );
+    const [balances, ethBalanceWei] = await Promise.all([
+      Promise.all(
+        SUPPORTED_TOKENS.map(async (token) => ({
+          symbol: token.symbol,
+          balance: (await getErc20Balance(token.address, executionWallet)).toString(),
+        })),
+      ),
+      getEthBalance(executionWallet),
+    ]);
+    // 0.005 ETH is a conservative gas-headroom threshold, not a hard
+    // requirement — the real per-tx cost varies with gas price, but a real
+    // execution has already failed with INSUFFICIENT_FUNDS below this
+    // range, so flag it before it happens again rather than after.
+    const lowGasThresholdWei = BigInt("5000000000000000"); // 0.005 ETH
     return NextResponse.json({
       ok: true,
       executionWallet,
       balances: Object.fromEntries(balances.map((b) => [b.symbol, b.balance])),
+      ethBalanceWei: ethBalanceWei.toString(),
+      ethBalanceLow: ethBalanceWei < lowGasThresholdWei,
     });
   } catch (err) {
     return NextResponse.json(

@@ -38,3 +38,15 @@ export async function getErc20Balance(tokenAddress: string, owner: string): Prom
     args: [owner as Address],
   });
 }
+
+/**
+ * Real native ETH balance via a plain eth_getBalance call — the wallet's
+ * gas budget, not a token balance. Added after a real execution failure
+ * (INSUFFICIENT_FUNDS from KeeperHub's own RPC, surfaced via the audit
+ * trail) that this would have shown proactively: every ERC-20 balance
+ * check can pass while the wallet still can't afford to pay gas for the
+ * transaction that would move them.
+ */
+export async function getEthBalance(owner: string): Promise<bigint> {
+  return publicClient.getBalance({ address: owner as Address });
+}

@@ -15,6 +15,12 @@ interface HealthEntry {
 interface WalletState {
   executionWallet: string;
   balances: Record<string, string>;
+  ethBalanceWei?: string;
+  ethBalanceLow?: boolean;
+}
+
+function formatEth(wei: string): string {
+  return (Number(wei) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
 /**
@@ -152,6 +158,17 @@ export default function IntegrationsPage() {
             ) : walletState ? (
               <div className="flex flex-col gap-2">
                 <Row label="Execution wallet" value={shortHash(walletState.executionWallet, 8, 6)} />
+                {walletState.ethBalanceWei != null && (
+                  <>
+                    <Row label="ETH balance (gas budget)" value={`${formatEth(walletState.ethBalanceWei)} ETH`} />
+                    {walletState.ethBalanceLow && (
+                      <div className="rounded-lg border border-danger/30 bg-danger-dim px-3 py-2 text-[11px] text-danger">
+                        Low ETH — real executions can fail with INSUFFICIENT_FUNDS before a transaction is even broadcast.
+                        Send more ETH to the execution wallet above.
+                      </div>
+                    )}
+                  </>
+                )}
                 {Object.entries(walletState.balances).map(([symbol, raw]) => (
                   <Row key={symbol} label={`${symbol} balance (raw)`} value={raw} />
                 ))}
