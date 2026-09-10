@@ -103,11 +103,14 @@ async function keeperFetchWithStatus(path: string, init?: RequestInit): Promise<
 export interface Web3WriteContractAction {
   actionType: "web3/write-contract";
   contractAddress: string;
-  /** KeeperHub's validator requires this as a JSON-stringified ABI, not an array — confirmed via the real Phase A validation error. */
+  /** JSON-stringified ABI, not a raw array — confirmed both by the real Phase A validation error AND by official docs.keeperhub.com/api/workflows ("Contract ABI -> abi -> JSON-encoded string, not a raw array"). */
   abi: string;
   abiFunction: string;
-  functionArgs: unknown[];
+  /** JSON-stringified array, not a raw array — per official docs: "Function Arguments -> functionArgs -> A JSON-encoded array string, not a raw array." The docs separately document a save-time-accepted/runtime-rejected trap for the analogous functionName/abiFunction field; a raw array here is exactly that same trap. */
+  functionArgs: string;
   network: string;
+  /** Sender routing, per official docs: "default" (org policy — resolves to the org's Turnkey wallet automatically), "eoa" (force the Turnkey EOA), or "safe:<safeWalletId>". Always sent explicitly rather than omitted. */
+  web3Connection: "default" | "eoa" | `safe:${string}`;
   /** No `value` field — KeeperHub's validator rejects it as UNKNOWN_FIELD, confirmed via the real Phase A validation error. */
 }
 
@@ -148,8 +151,9 @@ export function buildApproveAction(params: {
     contractAddress: params.tokenAddress,
     abi: JSON.stringify(ERC20_APPROVE_ABI),
     abiFunction: "approve",
-    functionArgs: [params.spender, params.amount],
+    functionArgs: JSON.stringify([params.spender, params.amount]),
     network: params.network,
+    web3Connection: "default",
   };
 }
 
@@ -164,8 +168,9 @@ export function buildExecuteAction(params: {
     contractAddress: params.routerAddress,
     abi: JSON.stringify(EXECUTE_ABI),
     abiFunction: "execute",
-    functionArgs: [params.commands, params.inputs],
+    functionArgs: JSON.stringify([params.commands, params.inputs]),
     network: params.network,
+    web3Connection: "default",
   };
 }
 
@@ -259,4 +264,15 @@ export async function getCurrentUser(): Promise<StatusedResponse> {
  */
 export async function getUserWallet(): Promise<StatusedResponse> {
   return keeperFetchWithStatus("/api/user/wallet");
+}
+
+/**
+ * GET /api/mcp/schemas — documented, read-only, "anonymous and publicly
+ * cacheable" per docs.keeperhub.com/api/workflows. Returns the full action
+ * registry, including the exact required/optional field list for
+ * web3/write-contract — the authoritative source of truth for our schema,
+ * rather than inferring it from a single example.
+ */
+export async function getActionSchemas(): Promise<unknown> {
+  return keeperFetch("/api/mcp/schemas");
 }

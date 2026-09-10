@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { getCreatedWorkflow, getWalletBalances, getCurrentUser, getUserWallet } from "@/lib/keeperhub/dynamicWorkflow";
+import {
+  getCreatedWorkflow,
+  getWalletBalances,
+  getCurrentUser,
+  getUserWallet,
+  getActionSchemas,
+} from "@/lib/keeperhub/dynamicWorkflow";
 import { KeeperHubError } from "@/lib/keeperhub/client";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +22,8 @@ export const maxDuration = 30;
  *     funds every workflow execution.
  *   - GET /api/user/wallet — per official KeeperHub docs, the
  *     organization's Turnkey wallet record.
+ *   - GET /api/mcp/schemas — documented, public, cacheable action registry;
+ *     used here to pull the authoritative web3/write-contract field list.
  * Never calls execute, enable, update, create, delete, or any endpoint not
  * confirmed to exist. Any field matching a secret-shaped name is redacted
  * before being returned, in every response included here.
@@ -113,6 +121,21 @@ export async function POST(request: Request) {
         : err instanceof Error
           ? err.message
           : "Unknown error fetching /api/user/wallet.";
+  }
+
+  try {
+    const schemas = await getActionSchemas();
+    const record = schemas && typeof schemas === "object" ? (schemas as Record<string, unknown>) : {};
+    const actions = record.actions && typeof record.actions === "object" ? (record.actions as Record<string, unknown>) : {};
+    result.writeContractSchema = actions["web3/write-contract"] ?? "Not found in the actions registry.";
+    result.totalActionsInRegistry = Object.keys(actions).length;
+  } catch (err) {
+    result.actionSchemasError =
+      err instanceof KeeperHubError
+        ? { message: err.message, status: err.status, body: err.body }
+        : err instanceof Error
+          ? err.message
+          : "Unknown error fetching /api/mcp/schemas.";
   }
 
   return NextResponse.json({
