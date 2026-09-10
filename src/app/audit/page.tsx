@@ -124,7 +124,7 @@ function EventRow({ event, automationName, last }: { event: AuditEvent; automati
                 {a.routerAddress ? ` — router ${shortHash(a.routerAddress, 6, 4)}` : ""}: {String(a.outcome)}
               </div>
               {a.responseShape != null && (
-                <pre className="mt-0.5 max-h-32 overflow-auto rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
+                <pre className="mt-0.5 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
                   {JSON.stringify(a.responseShape, null, 1)}
                 </pre>
               )}
@@ -135,7 +135,7 @@ function EventRow({ event, automationName, last }: { event: AuditEvent; automati
       {keeperhubExecution != null && (
         <div className="mt-1.5">
           <div className="mb-0.5 text-[10px] text-text-muted">Full KeeperHub execution record:</div>
-          <pre className="max-h-48 overflow-auto rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
             {JSON.stringify(keeperhubExecution, null, 1)}
           </pre>
         </div>

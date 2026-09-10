@@ -223,7 +223,7 @@ export default function IntegrationsPage() {
               </div>
               {quoteError && <p className="text-xs text-danger">{quoteError}</p>}
               {quoteResult != null && (
-                <pre className="max-h-56 overflow-auto rounded-lg border border-border bg-surface px-3 py-2.5 text-[10px] leading-relaxed text-text-secondary">
+                <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-surface px-3 py-2.5 text-[10px] leading-relaxed text-text-secondary">
                   {JSON.stringify(quoteResult, null, 2)}
                 </pre>
               )}
@@ -243,7 +243,7 @@ export default function IntegrationsPage() {
             </div>
             {resolveError && <p className="mt-2 text-xs text-danger">{resolveError}</p>}
             {resolveResult != null && (
-              <pre className="mt-3 max-h-56 overflow-auto rounded-lg border border-border bg-surface px-3 py-2.5 text-[10px] leading-relaxed text-text-secondary">
+              <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-surface px-3 py-2.5 text-[10px] leading-relaxed text-text-secondary">
                 {JSON.stringify(resolveResult, null, 2)}
               </pre>
             )}
