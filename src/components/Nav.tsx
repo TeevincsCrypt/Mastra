@@ -8,8 +8,12 @@ import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/format";
 
 const LINKS = [
+  { href: "/overview", label: "Overview" },
+  { href: "/automations", label: "Automations" },
+  { href: "/policies", label: "Policies" },
+  { href: "/audit", label: "Audit" },
+  { href: "/integrations", label: "Integrations" },
   { href: "/swap", label: "Swap" },
-  { href: "/audit", label: "Audit Trail" },
   { href: "/ai", label: "Mastra AI" },
 ];
 
