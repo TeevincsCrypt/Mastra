@@ -109,9 +109,15 @@ export interface Web3WriteContractAction {
   /** JSON-stringified array, not a raw array — per official docs: "Function Arguments -> functionArgs -> A JSON-encoded array string, not a raw array." The docs separately document a save-time-accepted/runtime-rejected trap for the analogous functionName/abiFunction field; a raw array here is exactly that same trap. */
   functionArgs: string;
   network: string;
-  /** Sender routing, per official docs: "default" (org policy — resolves to the org's Turnkey wallet automatically), "eoa" (force the Turnkey EOA), or "safe:<safeWalletId>". Always sent explicitly rather than omitted. */
-  web3Connection: "default" | "eoa" | `safe:${string}`;
-  /** No `value` field — KeeperHub's validator rejects it as UNKNOWN_FIELD, confirmed via the real Phase A validation error. */
+  /**
+   * No `web3Connection` field, despite the official docs example showing
+   * one — the real, live validator on this account rejects it as
+   * UNKNOWN_FIELD, confirmed directly (same pattern as `value` below).
+   * Real API behavior wins over docs when the two conflict.
+   *
+   * No `value` field — KeeperHub's validator rejects it as UNKNOWN_FIELD,
+   * confirmed via the real Phase A validation error.
+   */
 }
 
 const ERC20_APPROVE_ABI: unknown[] = [
@@ -153,7 +159,6 @@ export function buildApproveAction(params: {
     abiFunction: "approve",
     functionArgs: JSON.stringify([params.spender, params.amount]),
     network: params.network,
-    web3Connection: "default",
   };
 }
 
@@ -170,7 +175,6 @@ export function buildExecuteAction(params: {
     abiFunction: "execute",
     functionArgs: JSON.stringify([params.commands, params.inputs]),
     network: params.network,
-    web3Connection: "default",
   };
 }
 
