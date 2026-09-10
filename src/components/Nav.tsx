@@ -13,15 +13,44 @@ const LINKS = [
   { href: "/ai", label: "Mastra AI" },
 ];
 
+/**
+ * Vector recreation of the mascot artwork the user provided in chat (a
+ * walking green cash-bill character in sunglasses, carrying a money bag).
+ * Recreated by hand from visual reference, not the source file — this
+ * sandbox has no way to pull raw image bytes out of an inline chat
+ * attachment onto disk. Swap for the real asset if/when it's available as
+ * an actual file.
+ */
+function MastraMascotLogo() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 32 32" fill="none">
+      <path d="M13 23.5 10.3 29l3 .9 2-5.2" fill="#4d8a37" stroke="#2d5a24" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M19.3 23.5 22 28.6l-2.9 1-2.4-5.2" fill="#4d8a37" stroke="#2d5a24" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M9 14.2c-2.1-.2-3.7.7-4.2 2.2" stroke="#2d5a24" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+      <circle cx="4.6" cy="17.2" r="1.7" fill="#5fa845" stroke="#2d5a24" strokeWidth="1" />
+      <path d="M22.8 15c2 .4 3.1 1.9 3.3 3.8" stroke="#2d5a24" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+      <path
+        d="M25.7 19.3c-1.9 0-3.3 1.4-3.3 3.1s1.4 3.1 3.3 3.1 3.3-1.4 3.3-3.1c0-1.2-.7-2.3-1.8-2.8l.6-1.3-1.6.7-1.4-.7.5 1.3z"
+        fill="#e3c675"
+        stroke="#a9843a"
+        strokeWidth="0.8"
+        strokeLinejoin="round"
+      />
+      <g transform="rotate(-8 16 14)">
+        <rect x="9" y="3.5" width="14" height="20" rx="3.5" fill="#5fa845" stroke="#2d5a24" strokeWidth="1.4" />
+        <circle cx="13.1" cy="11.5" r="2.3" fill="#111" />
+        <circle cx="18.7" cy="11.5" r="2.3" fill="#111" />
+        <path d="M15.4 11.5h1.1" stroke="#111" strokeWidth="1.2" />
+        <path d="M13.4 17q2.6 2 5.2 0" stroke="#1f3d19" strokeWidth="1" strokeLinecap="round" fill="none" />
+      </g>
+    </svg>
+  );
+}
+
 function Logo() {
   return (
-    <Link href="/" className="flex items-center gap-2.5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-accent/40 bg-accent-dim">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M8 1L14.5 4.6V11.4L8 15L1.5 11.4V4.6L8 1Z" stroke="var(--accent)" strokeWidth="1.3" strokeLinejoin="round" />
-          <path d="M8 8L14.5 4.6M8 8V15M8 8L1.5 4.6" stroke="var(--accent)" strokeWidth="1.3" strokeLinejoin="round" />
-        </svg>
-      </span>
+    <Link href="/" className="flex items-center gap-2">
+      <MastraMascotLogo />
       <span className="flex flex-col leading-none">
         <span className="text-[15px] font-semibold tracking-tight text-text-primary">Mastra</span>
         <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">Execution Control</span>
