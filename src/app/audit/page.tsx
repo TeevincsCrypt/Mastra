@@ -6,6 +6,7 @@ import { useHydrated } from "@/lib/useHydrated";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { loadHistory } from "@/lib/swapHistory";
 import { HistoryRow } from "@/app/swap/page";
+import { shortHash } from "@/lib/format";
 import type { Automation, AuditEvent } from "@/lib/store/types";
 
 /**
@@ -105,6 +106,7 @@ export default function AuditPage() {
 }
 
 function EventRow({ event, automationName, last }: { event: AuditEvent; automationName?: string; last?: boolean }) {
+  const attemptsLog = Array.isArray(event.metadata?.attemptsLog) ? (event.metadata!.attemptsLog as Array<Record<string, unknown>>) : null;
   return (
     <div className={`px-5 py-3 text-sm ${last ? "" : "border-b border-border"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -112,6 +114,16 @@ function EventRow({ event, automationName, last }: { event: AuditEvent; automati
         <span className="text-xs text-text-muted">{new Date(event.timestamp).toLocaleString()}</span>
       </div>
       <div className="mt-1 text-xs text-text-secondary">{event.message}</div>
+      {attemptsLog && (
+        <div className="mt-1.5 flex flex-col gap-0.5 border-l-2 border-border pl-2">
+          {attemptsLog.map((a, i) => (
+            <div key={i} className="text-[10px] text-text-muted">
+              attempt {String(a.attempt)}
+              {a.routerAddress ? ` — router ${shortHash(a.routerAddress, 6, 4)}` : ""}: {String(a.outcome)}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="mt-1 text-[10px] uppercase tracking-wide text-text-muted">{automationName}</div>
     </div>
   );

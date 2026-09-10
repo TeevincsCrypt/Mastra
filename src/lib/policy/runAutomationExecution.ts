@@ -120,6 +120,20 @@ export async function runAutomationExecution(automationId: string, callerAddress
 
   if (!prepared.ok) {
     const blocked = Boolean(prepared.policyBlocked);
+    if (!blocked && prepared.attemptsLog?.length) {
+      // Not a policy block — a route-trust failure (e.g. unsupported_router).
+      // The router addresses Wayfinder actually offered and why each was
+      // rejected exist in prepared.attemptsLog but weren't persisted
+      // anywhere: surface them here so this is inspectable in the real
+      // audit trail instead of only the generic top-level error string.
+      await recordAuditEvent({
+        automationId,
+        executionId: execution.id,
+        type: "WAYFINDER_ROUTE_REJECTED",
+        message: `Stage "${prepared.stage}": ${prepared.error}`,
+        metadata: { attemptsLog: prepared.attemptsLog },
+      });
+    }
     return (await updateExecution(execution.id, {
       status: blocked ? "blocked" : "failed",
       error: prepared.error,

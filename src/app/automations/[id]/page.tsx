@@ -256,6 +256,7 @@ function ExecutionRow({ execution, last }: { execution: ExecutionRecord; last?: 
 }
 
 function AuditRow({ event, last }: { event: AuditEvent; last?: boolean }) {
+  const attemptsLog = Array.isArray(event.metadata?.attemptsLog) ? (event.metadata!.attemptsLog as Array<Record<string, unknown>>) : null;
   return (
     <div className={`px-5 py-2.5 text-xs ${last ? "" : "border-b border-border"}`}>
       <div className="flex items-center justify-between">
@@ -263,6 +264,16 @@ function AuditRow({ event, last }: { event: AuditEvent; last?: boolean }) {
         <span className="text-text-muted">{new Date(event.timestamp).toLocaleTimeString()}</span>
       </div>
       <div className="mt-0.5 text-text-secondary">{event.message}</div>
+      {attemptsLog && (
+        <div className="mt-1.5 flex flex-col gap-0.5 border-l-2 border-border pl-2">
+          {attemptsLog.map((a, i) => (
+            <div key={i} className="text-[10px] text-text-muted">
+              attempt {String(a.attempt)}
+              {a.routerAddress ? ` — router ${shortHash(a.routerAddress, 6, 4)}` : ""}: {String(a.outcome)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
