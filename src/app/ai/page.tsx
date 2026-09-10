@@ -18,8 +18,8 @@ interface Message {
 
 const PRESET_QUESTIONS = [
   "What is Wayfinder and what does it do?",
-  "How does KeeperHub actually execute my swap?",
-  "What is the approval-hash security check?",
+  "How does self-custodial execution actually work here?",
+  "Does Mastra ever hold or sign for my funds?",
   "Why might my swap revert on-chain?",
   "Which tokens can I swap right now?",
 ];
@@ -77,7 +77,7 @@ export default function MastraAiPage() {
       <PageHeader
         eyebrow="Real, Claude-backed"
         title="Mastra AI"
-        description="Ask about how Wayfinder, KeeperHub, and Mastra's security model actually work. Real answers from Claude, grounded in this product's real architecture — not scripted, not a live data feed."
+        description="Ask about how Wayfinder and Mastra's self-custodial security model actually work. Real answers from Claude, grounded in this product's real architecture — not scripted, not a live data feed."
         action={<StatusPill tone="wayfinder" dot>Claude Opus 5</StatusPill>}
       />
 

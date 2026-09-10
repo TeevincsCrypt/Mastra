@@ -1,5 +1,6 @@
 import { createPublicClient, http, type Address } from "viem";
 import { mainnet } from "viem/chains";
+import { ERC20_ABI } from "./erc20Abi";
 
 /**
  * Read-only Ethereum mainnet client. This is NOT a signer — no private key,
@@ -19,26 +20,6 @@ export const publicClient = createPublicClient({
   chain: mainnet,
   transport: http(RPC_URL),
 });
-
-const ERC20_ABI = [
-  {
-    type: "function",
-    name: "allowance",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ type: "uint256" }],
-  },
-] as const;
 
 export async function getErc20Allowance(tokenAddress: string, owner: string, spender: string): Promise<bigint> {
   return publicClient.readContract({
