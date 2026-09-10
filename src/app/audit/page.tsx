@@ -1,168 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import { useMastraStore } from "@/lib/store";
-import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
-import { shortHash } from "@/lib/mock";
-import { ChainRoute } from "@/components/ChainBadge";
-import { StatusPill } from "@/components/StatusPill";
-import { PageShell, PageHeader, ConnectWalletPrompt } from "@/components/PageShell";
-import type { ExecutionRecord } from "@/lib/types";
+import { PageShell, PageHeader } from "@/components/PageShell";
+import { loadHistory } from "@/lib/swapHistory";
+import { HistoryRow } from "@/app/swap/page";
 
-export default function AuditTrailPage() {
+/**
+ * Real audit trail: every real swap attempt recorded in this browser,
+ * success or failure, read straight from the same localStorage history
+ * /swap writes to. Not shared across devices/viewers — see swapHistory.ts.
+ */
+export default function AuditPage() {
   const hydrated = useHydrated();
-  const { isConnected, isWrongNetwork } = useWallet();
-  const auditTrail = useMastraStore((s) => s.auditTrail);
+  const [history] = useState(() => (typeof window === "undefined" ? [] : loadHistory()));
 
   if (!hydrated) return null;
-
-  if (!isConnected || isWrongNetwork) {
-    return (
-      <PageShell>
-        <PageHeader eyebrow="Audit Trail" title="Complete execution history" />
-        <ConnectWalletPrompt message="Connect a wallet to view the auditable history of approved and executed workflows." />
-      </PageShell>
-    );
-  }
 
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Audit Trail"
-        title="Complete execution history"
-        description="Every approved workflow, exactly as it was simulated, approved and executed on-chain."
-        action={<StatusPill tone="neutral">{auditTrail.length} record{auditTrail.length === 1 ? "" : "s"}</StatusPill>}
+        eyebrow="Real history — this browser"
+        title="Audit Trail"
+        description="Every real swap attempt made from this browser, success or failure, with its real transaction hash where one exists. Nothing here is simulated or backfilled."
       />
 
-      {auditTrail.length === 0 ? (
-        <div className="card px-8 py-16 text-center text-sm text-text-muted">
-          No executions recorded yet. Approve a workflow to create your first audit record.
+      {history.length === 0 ? (
+        <div className="card flex flex-col items-center gap-4 px-8 py-16 text-center">
+          <p className="max-w-sm text-sm text-text-secondary">No swaps recorded yet in this browser.</p>
+          <a href="/swap" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">
+            Go to Swap
+          </a>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {auditTrail.map((record) => (
-            <AuditRow key={record.id} record={record} />
+        <div className="card overflow-hidden">
+          {history.map((entry, i) => (
+            <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} last={i === history.length - 1} />
           ))}
         </div>
       )}
     </PageShell>
-  );
-}
-
-function AuditRow({ record }: { record: ExecutionRecord }) {
-  const [open, setOpen] = useState(false);
-  const duration = record.finishedAt ? ((record.finishedAt - record.startedAt) / 1000).toFixed(1) : "—";
-
-  return (
-    <div className="card overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4 text-left"
-      >
-        <div className="flex items-center gap-3">
-          <StatusPill tone={record.status === "confirmed" ? "success" : "danger"} dot>
-            {record.status === "confirmed" ? "Confirmed" : "Failed"}
-          </StatusPill>
-          <div>
-            <div className="text-sm font-medium text-text-primary">{record.intent}</div>
-            <div className="mt-0.5 text-xs text-text-muted">
-              {new Date(record.startedAt).toLocaleString()}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <ChainRoute from={record.fromChain} to={record.toChain} />
-          <span className="hidden font-mono text-xs text-text-muted sm:inline">
-            {shortHash(record.finalTxHash ?? "")}
-          </span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            className={`shrink-0 text-text-muted transition-transform ${open ? "rotate-180" : ""}`}
-          >
-            <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-      </button>
-
-      {open && (
-        <div className="border-t border-border px-5 py-4">
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Detail label="Amount" value={`${record.amount} ${record.token}`} />
-            <Detail label="USD value" value={`$${record.usdValue}`} />
-            <Detail label="Duration" value={`${duration}s`} />
-            <Detail label="Preflight" value={record.preflightPassed ? "Passed ✓" : "—"} />
-          </div>
-
-          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-                Approved by (identity only — not the executing wallet)
-              </div>
-              <div className="font-mono text-xs text-text-secondary">{record.approvedBy}</div>
-            </div>
-            {record.keeperhubWorkflowId && (
-              <div>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">KeeperHub workflow ID</div>
-                <div className="font-mono text-xs text-text-secondary">{record.keeperhubWorkflowId}</div>
-              </div>
-            )}
-            {record.keeperhubExecutionId && (
-              <div>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">KeeperHub execution ID</div>
-                <div className="font-mono text-xs text-text-secondary">{record.keeperhubExecutionId}</div>
-              </div>
-            )}
-            {record.approvedWorkflowHash && (
-              <div>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Approved workflow hash</div>
-                <div className="font-mono text-xs text-text-secondary" title="SHA-256 of the approved proposal, reverified immediately before execution">
-                  {record.approvedWorkflowHash.slice(0, 16)}…
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Execution steps</div>
-          <div className="flex flex-col gap-2">
-            {record.steps.map((step) => (
-              <div
-                key={step.actionId}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-bg-elevated px-3 py-2"
-              >
-                <span className="text-xs font-medium text-text-primary">{step.label}</span>
-                <span className="font-mono text-xs text-text-muted">{shortHash(step.txHash ?? "", 8, 6)}</span>
-              </div>
-            ))}
-          </div>
-
-          {record.status === "confirmed" && record.finalTxHash ? (
-            <div className="mt-4 flex items-center justify-between rounded-lg border border-success/30 bg-success-dim px-4 py-3">
-              <span className="text-xs font-medium text-success">Final transaction</span>
-              <span className="font-mono text-xs text-success">{record.finalTxHash}</span>
-            </div>
-          ) : (
-            record.error && (
-              <div className="mt-4 rounded-lg border border-danger/30 bg-danger-dim px-4 py-3">
-                <span className="text-xs font-medium text-danger">{record.error}</span>
-              </div>
-            )
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{label}</div>
-      <div className="mt-0.5 text-sm font-medium text-text-primary">{value}</div>
-    </div>
   );
 }

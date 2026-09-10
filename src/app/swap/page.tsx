@@ -3,42 +3,20 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
-import { shortHash } from "@/lib/mock";
+import { shortHash, formatUnits } from "@/lib/format";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { StatusPill } from "@/components/StatusPill";
+import { SUPPORTED_TOKENS, findToken } from "@/lib/tokens";
+import { loadHistory, saveHistory, type HistoryEntry } from "@/lib/swapHistory";
 
 /**
  * Real Ethereum mainnet swap: real Wayfinder quote -> real decode -> real
  * on-chain allowance check -> real KeeperHub workflow -> approval-hash
  * security gate -> real KeeperHub execute(). Every number on this page
  * comes from an actual API/RPC response; nothing here is simulated. This
- * is the productionized version of the flow proven out on /wayfinder-test.
+ * is Mastra's one real product flow — the earlier mock/Sepolia demo pages
+ * have been retired in favor of this.
  */
-
-const USDC_DECIMALS = 6;
-const WETH_DECIMALS = 18;
-
-interface TokenInfo {
-  wayfinderId: string;
-  symbol: string;
-  decimals: number;
-}
-
-const USDC_TOKEN: TokenInfo = { wayfinderId: "usd-coin-ethereum", symbol: "USDC", decimals: USDC_DECIMALS };
-const WETH_TOKEN: TokenInfo = { wayfinderId: "weth-ethereum", symbol: "WETH", decimals: WETH_DECIMALS };
-
-type Direction = "usdc-to-weth" | "weth-to-usdc";
-
-function tokensForDirection(direction: Direction): { from: TokenInfo; to: TokenInfo } {
-  return direction === "usdc-to-weth" ? { from: USDC_TOKEN, to: WETH_TOKEN } : { from: WETH_TOKEN, to: USDC_TOKEN };
-}
-
-// Default trade size per direction — small enough to be realistic against
-// the real, small balances this wallet actually holds in testing.
-const DEFAULT_AMOUNT: Record<Direction, string> = {
-  "usdc-to-weth": "1.2",
-  "weth-to-usdc": "0.0002",
-};
 
 // Display-only labels for this router's real Commands enum (verified against
 // its published source on Etherscan). Never used for trust decisions — the
@@ -66,15 +44,9 @@ function describeCommands(commandsHex: string): string {
   return bytes.map((b) => COMMAND_LABELS[b.toLowerCase()] ?? `Unknown (0x${b})`).join(" → ");
 }
 
-function formatUnits(raw: string, decimals: number, maxFractionDigits = 6): string {
-  const n = Number(raw) / 10 ** decimals;
-  return n.toLocaleString(undefined, { maximumFractionDigits: maxFractionDigits });
-}
-
 interface WalletState {
   executionWallet: string;
-  usdcBalance: string;
-  wethBalance: string;
+  balances: Record<string, string>;
 }
 
 interface PrepareResult {
@@ -96,35 +68,7 @@ interface ExecuteResult {
   transactionHashes?: string[];
 }
 
-interface HistoryEntry {
-  timestamp: number;
-  amountLabel: string;
-  status: "success" | "reverted" | "failed";
-  txHash?: string;
-  workflowId?: string;
-  error?: string;
-}
-
-const HISTORY_KEY = "mastra-swap-history";
-const HISTORY_LIMIT = 20;
-
-function loadHistory(): HistoryEntry[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(entries: HistoryEntry[]) {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_LIMIT)));
-  } catch {
-    // Best-effort — history is a convenience, not required for the swap itself.
-  }
-}
+const HISTORY_LIMIT_DISPLAY = 5;
 
 type Stage = "form" | "preparing" | "prepared" | "executing" | "success" | "error";
 
@@ -132,9 +76,12 @@ export default function SwapPage() {
   const hydrated = useHydrated();
   const { address, isConnected } = useWallet();
 
-  const [direction, setDirection] = useState<Direction>("usdc-to-weth");
-  const { from: fromToken, to: toToken } = tokensForDirection(direction);
-  const [amount, setAmount] = useState(DEFAULT_AMOUNT["usdc-to-weth"]);
+  const [fromSymbol, setFromSymbol] = useState("USDC");
+  const [toSymbol, setToSymbol] = useState("WETH");
+  const fromToken = findToken(fromSymbol) ?? SUPPORTED_TOKENS[0];
+  const toToken = findToken(toSymbol) ?? SUPPORTED_TOKENS[1];
+
+  const [amount, setAmount] = useState("1.2");
   const [stage, setStage] = useState<Stage>("form");
   const [prepared, setPrepared] = useState<PrepareResult | null>(null);
   const [executed, setExecuted] = useState<ExecuteResult | null>(null);
@@ -147,20 +94,10 @@ export default function SwapPage() {
 
   function recordHistory(entry: HistoryEntry) {
     setHistory((prev) => {
-      const next = [entry, ...prev].slice(0, HISTORY_LIMIT);
+      const next = [entry, ...prev];
       saveHistory(next);
       return next;
     });
-  }
-
-  function toggleDirection() {
-    const next: Direction = direction === "usdc-to-weth" ? "weth-to-usdc" : "usdc-to-weth";
-    setDirection(next);
-    setAmount(DEFAULT_AMOUNT[next]);
-    setStage("form");
-    setPrepared(null);
-    setExecuted(null);
-    setErrorDetail(null);
   }
 
   async function loadWalletState() {
@@ -191,6 +128,31 @@ export default function SwapPage() {
       cancelled = true;
     };
   }, []);
+
+  function handleFromChange(symbol: string) {
+    setFromSymbol(symbol);
+    if (symbol === toSymbol) {
+      const alternative = SUPPORTED_TOKENS.find((t) => t.symbol !== symbol);
+      if (alternative) setToSymbol(alternative.symbol);
+    }
+  }
+
+  function handleToChange(symbol: string) {
+    setToSymbol(symbol);
+    if (symbol === fromSymbol) {
+      const alternative = SUPPORTED_TOKENS.find((t) => t.symbol !== symbol);
+      if (alternative) setFromSymbol(alternative.symbol);
+    }
+  }
+
+  function toggleDirection() {
+    setFromSymbol(toSymbol);
+    setToSymbol(fromSymbol);
+    setStage("form");
+    setPrepared(null);
+    setExecuted(null);
+    setErrorDetail(null);
+  }
 
   async function handlePrepare() {
     setStage("preparing");
@@ -228,13 +190,14 @@ export default function SwapPage() {
       });
       const data = await res.json();
       const amountLabel = `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`;
+      const historyBase = { fromSymbol: fromToken.symbol, toSymbol: toToken.symbol, workflowId: prepared.keeperhubWorkflowId };
 
       if (!res.ok || !data.ok) {
         // Request-level failure (approval invalidated, KeeperHub API error,
         // poll timeout) — no on-chain execution result exists to show.
         setErrorDetail(data.error ?? "Execution failed.");
         setStage("error");
-        recordHistory({ timestamp: Date.now(), amountLabel, status: "failed", workflowId: prepared.keeperhubWorkflowId, error: data.error });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "failed", error: data.error, ...historyBase });
         loadWalletState();
         return;
       }
@@ -249,13 +212,13 @@ export default function SwapPage() {
 
       if (data.status === "success") {
         setStage("success");
-        recordHistory({ timestamp: Date.now(), amountLabel, status: "success", txHash, workflowId: prepared.keeperhubWorkflowId });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "success", txHash, ...historyBase });
       } else {
         setErrorDetail(
           `The swap did not succeed (KeeperHub status: "${data.status ?? "unknown"}"). This was a real on-chain attempt — gas was spent, but the swap itself reverted.`,
         );
         setStage("error");
-        recordHistory({ timestamp: Date.now(), amountLabel, status: "reverted", txHash, workflowId: prepared.keeperhubWorkflowId });
+        recordHistory({ timestamp: Date.now(), amountLabel, status: "reverted", txHash, ...historyBase });
       }
       loadWalletState();
     } catch (err) {
@@ -265,6 +228,8 @@ export default function SwapPage() {
       recordHistory({
         timestamp: Date.now(),
         amountLabel: `${formatUnits(prepared.inputAmountRaw, fromToken.decimals)} ${fromToken.symbol}`,
+        fromSymbol: fromToken.symbol,
+        toSymbol: toToken.symbol,
         status: "failed",
         workflowId: prepared.keeperhubWorkflowId,
         error: message,
@@ -281,6 +246,8 @@ export default function SwapPage() {
 
   if (!hydrated) return null;
 
+  const recentHistory = history.slice(0, HISTORY_LIMIT_DISPLAY);
+
   return (
     <PageShell>
       <PageHeader
@@ -290,10 +257,16 @@ export default function SwapPage() {
         action={<StatusPill tone="wayfinder" dot>Mainnet</StatusPill>}
       />
 
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
         <StatCard label="KeeperHub execution wallet" value={walletState ? shortHash(walletState.executionWallet, 6, 4) : "—"} mono loading={walletStateLoading} />
-        <StatCard label="USDC balance" value={walletState ? `${formatUnits(walletState.usdcBalance, USDC_DECIMALS)} USDC` : "—"} loading={walletStateLoading} />
-        <StatCard label="WETH balance" value={walletState ? `${formatUnits(walletState.wethBalance, WETH_DECIMALS)} WETH` : "—"} loading={walletStateLoading} />
+        {SUPPORTED_TOKENS.map((token) => (
+          <StatCard
+            key={token.symbol}
+            label={`${token.symbol} balance`}
+            value={walletState ? `${formatUnits(walletState.balances[token.symbol] ?? "0", token.decimals)} ${token.symbol}` : "—"}
+            loading={walletStateLoading}
+          />
+        ))}
       </div>
 
       <div className="mb-6 rounded-lg border border-wayfinder/30 bg-wayfinder-dim px-4 py-2.5 text-xs text-text-secondary">
@@ -306,16 +279,27 @@ export default function SwapPage() {
       <div className="card p-6">
         {stage === "form" && (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-text-secondary">
-                <span className="font-semibold text-text-primary">{fromToken.symbol}</span> →{" "}
-                <span className="font-semibold text-text-primary">{toToken.symbol}</span>
-              </span>
+            <div className="flex items-end gap-3">
+              <label className="flex flex-1 flex-col gap-1.5 text-sm text-text-secondary">
+                From
+                <select
+                  value={fromSymbol}
+                  onChange={(e) => handleFromChange(e.target.value)}
+                  className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
+                >
+                  {SUPPORTED_TOKENS.map((t) => (
+                    <option key={t.symbol} value={t.symbol}>
+                      {t.symbol} — {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <button
                 type="button"
                 onClick={toggleDirection}
                 title="Reverse direction"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-strong text-text-secondary transition-colors hover:border-accent/50 hover:text-accent"
+                className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border-strong text-text-secondary transition-colors hover:border-accent/50 hover:text-accent"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path
@@ -327,6 +311,21 @@ export default function SwapPage() {
                   />
                 </svg>
               </button>
+
+              <label className="flex flex-1 flex-col gap-1.5 text-sm text-text-secondary">
+                To
+                <select
+                  value={toSymbol}
+                  onChange={(e) => handleToChange(e.target.value)}
+                  className="rounded-lg border border-border-strong bg-transparent px-3 py-2.5 text-sm text-text-primary"
+                >
+                  {SUPPORTED_TOKENS.map((t) => (
+                    <option key={t.symbol} value={t.symbol}>
+                      {t.symbol} — {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <label className="flex flex-col gap-1.5 text-sm text-text-secondary">
@@ -421,14 +420,13 @@ export default function SwapPage() {
 
             {balancesBefore && walletState && (
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
-                <Row
-                  label="USDC balance"
-                  value={`${formatUnits(balancesBefore.usdcBalance, USDC_DECIMALS)} → ${formatUnits(walletState.usdcBalance, USDC_DECIMALS)}`}
-                />
-                <Row
-                  label="WETH balance"
-                  value={`${formatUnits(balancesBefore.wethBalance, WETH_DECIMALS)} → ${formatUnits(walletState.wethBalance, WETH_DECIMALS)}`}
-                />
+                {SUPPORTED_TOKENS.map((token) => (
+                  <Row
+                    key={token.symbol}
+                    label={`${token.symbol} balance`}
+                    value={`${formatUnits(balancesBefore.balances[token.symbol] ?? "0", token.decimals)} → ${formatUnits(walletState.balances[token.symbol] ?? "0", token.decimals)}`}
+                  />
+                ))}
               </div>
             )}
 
@@ -481,12 +479,17 @@ export default function SwapPage() {
         )}
       </div>
 
-      {history.length > 0 && (
+      {recentHistory.length > 0 && (
         <div className="mt-8">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Recent swaps (this browser)</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-text-muted">Recent swaps (this browser)</h2>
+            <a href="/audit" className="text-xs font-medium text-accent-strong hover:underline">
+              View full audit trail →
+            </a>
+          </div>
           <div className="card overflow-hidden">
-            {history.map((entry, i) => (
-              <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} last={i === history.length - 1} />
+            {recentHistory.map((entry, i) => (
+              <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} last={i === recentHistory.length - 1} />
             ))}
           </div>
         </div>
@@ -506,7 +509,7 @@ function StatCard({ label, value, mono, loading }: { label: string; value: strin
   );
 }
 
-function HistoryRow({ entry, last }: { entry: HistoryEntry; last?: boolean }) {
+export function HistoryRow({ entry, last }: { entry: HistoryEntry; last?: boolean }) {
   const tone = entry.status === "success" ? "success" : entry.status === "reverted" ? "danger" : "warning";
   const label = entry.status === "success" ? "Success" : entry.status === "reverted" ? "Reverted" : "Failed";
   const when = new Date(entry.timestamp).toLocaleString(undefined, {
@@ -520,7 +523,9 @@ function HistoryRow({ entry, last }: { entry: HistoryEntry; last?: boolean }) {
     <div className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm ${last ? "" : "border-b border-border"}`}>
       <div className="flex items-center gap-3">
         <StatusPill tone={tone} dot>{label}</StatusPill>
-        <span className="text-text-secondary">{entry.amountLabel}</span>
+        <span className="text-text-secondary">
+          {entry.amountLabel} ({entry.fromSymbol} → {entry.toSymbol})
+        </span>
         <span className="text-xs text-text-muted">{when}</span>
       </div>
       {entry.txHash ? (

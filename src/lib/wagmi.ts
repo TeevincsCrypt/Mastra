@@ -1,16 +1,18 @@
 import { http, createConfig } from "wagmi";
-import { sepolia } from "wagmi/chains";
+import { mainnet } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
-// Sepolia only — it's the only chain KeeperHub actually executes against in
-// this build. Injected connector only (MetaMask and anything else that
-// injects window.ethereum) — no WalletConnect project id to sign up for,
-// matching "don't introduce unnecessary wallet libraries."
+// The connected wallet is identity/display only — Mastra's real swaps
+// execute through KeeperHub's own wallet, never this one, so no chain is
+// actually required here. Configured as mainnet to match what the product
+// does. Injected connector only (MetaMask and anything else that injects
+// window.ethereum) — no WalletConnect project id to sign up for, matching
+// "don't introduce unnecessary wallet libraries."
 export const wagmiConfig = createConfig({
-  chains: [sepolia],
+  chains: [mainnet],
   connectors: [injected()],
   transports: {
-    [sepolia.id]: http(),
+    [mainnet.id]: http(),
   },
 });
 

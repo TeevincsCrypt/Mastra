@@ -1,15 +1,14 @@
 import { useSyncExternalStore } from "react";
-import { useMastraStore } from "./store";
 
-// zustand's persist middleware can only read localStorage in the browser, so
-// `.persist` isn't populated during server rendering — guard every access.
-function subscribe(callback: () => void) {
-  const unsub = useMastraStore.persist?.onFinishHydration?.(callback);
-  return () => unsub?.();
+// Generic client-mounted check: true only once React has actually hydrated
+// in the browser, false during SSR. Used to gate any page/component that
+// reads localStorage or wallet state, which don't exist on the server.
+function subscribe() {
+  return () => {};
 }
 
 function getSnapshot() {
-  return useMastraStore.persist?.hasHydrated?.() ?? true;
+  return true;
 }
 
 function getServerSnapshot() {

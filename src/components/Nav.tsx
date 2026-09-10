@@ -4,30 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWallet } from "@/lib/useWallet";
 import { useHydrated } from "@/lib/useHydrated";
-import { shortHash } from "@/lib/mock";
+import { shortHash } from "@/lib/format";
 
 const LINKS = [
-  { href: "/swap", label: "Swap (mainnet)" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/workflow", label: "Workflow Review" },
-  { href: "/execution", label: "Execution" },
+  { href: "/swap", label: "Swap" },
   { href: "/audit", label: "Audit Trail" },
+  { href: "/ai", label: "Mastra AI" },
 ];
 
 export function Nav() {
   const pathname = usePathname();
   const hydrated = useHydrated();
-  const {
-    address,
-    isConnected,
-    isConnecting,
-    isWrongNetwork,
-    isSwitching,
-    hasInjectedProvider,
-    connectWallet,
-    disconnect,
-    switchToSepolia,
-  } = useWallet();
+  const { address, isConnected, isConnecting, hasInjectedProvider, connectWallet, disconnect } = useWallet();
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur">
@@ -68,14 +56,6 @@ export function Nav() {
 
         {!hydrated ? (
           <div className="h-9 w-32 rounded-lg bg-surface" />
-        ) : isConnected && isWrongNetwork ? (
-          <button
-            onClick={switchToSepolia}
-            disabled={isSwitching}
-            className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-medium text-warning transition-colors hover:border-warning/60 disabled:opacity-60"
-          >
-            {isSwitching ? "Switching…" : "Wrong network — Switch to Sepolia"}
-          </button>
         ) : isConnected ? (
           <button
             onClick={() => disconnect()}

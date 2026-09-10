@@ -4,22 +4,16 @@ import { useState } from "react";
 
 const GREEN = "#059669";
 
-export function LandingPage({
-  onConnect,
-  connected = false,
-}: {
-  onConnect: () => void;
-  connected?: boolean;
-}) {
+export function LandingPage({ onConnect }: { onConnect: () => void }) {
   return (
     <div className="bg-white text-slate-900">
-      <Hero onConnect={onConnect} connected={connected} />
+      <Hero onConnect={onConnect} />
       <IntegrationStrip />
       <FlowSection />
       <ApprovalSection />
       <VerifySection />
       <ExecuteSection />
-      <CtaBanner onConnect={onConnect} connected={connected} />
+      <CtaBanner onConnect={onConnect} />
       <Footer />
     </div>
   );
@@ -27,7 +21,7 @@ export function LandingPage({
 
 /* ---------------------------------- Hero --------------------------------- */
 
-function Hero({ onConnect, connected }: { onConnect: () => void; connected: boolean }) {
+function Hero({ onConnect }: { onConnect: () => void }) {
   return (
     <section className="px-4 pt-10 sm:px-8">
       <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[32px] bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 px-6 pb-28 pt-12 text-center sm:px-12 sm:pt-16">
@@ -44,17 +38,17 @@ function Hero({ onConnect, connected }: { onConnect: () => void; connected: bool
           </h1>
 
           <p className="mx-auto mt-5 max-w-xl text-sm text-emerald-50/90 sm:text-base">
-            Wayfinder proposes the move. Mastra shows you exactly what it will do. KeeperHub
-            simulates it, then executes only what you approved — nothing reinterpreted.
+            Wayfinder finds the route. Mastra shows you exactly what it will do. KeeperHub
+            executes only what you approved on real Ethereum mainnet — nothing reinterpreted.
           </p>
 
           <div className="mx-auto mt-8 flex w-fit flex-col items-center gap-3 rounded-2xl border border-white/20 bg-white/10 p-2 pl-5 backdrop-blur-sm sm:flex-row">
-            <span className="text-sm text-white/80">Non-custodial · Sepolia testnet</span>
+            <span className="text-sm text-white/80">Non-custodial · Ethereum mainnet</span>
             <button
               onClick={onConnect}
               className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {connected ? "Go to Dashboard" : "Connect Wallet"}
+              Go to Swap
               <ArrowIcon />
             </button>
           </div>
@@ -68,10 +62,10 @@ function Hero({ onConnect, connected }: { onConnect: () => void; connected: bool
         <FloatCard className="sm:translate-y-3">
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 pulse-dot" />
-            Simulation pass rate
+            Route verified
           </div>
           <div className="mt-2 text-2xl font-semibold text-slate-900">100%</div>
-          <div className="text-xs text-slate-400">last 24h</div>
+          <div className="text-xs text-slate-400">of approved swaps</div>
         </FloatCard>
 
         <FloatCard className="sm:-translate-y-2">
@@ -80,13 +74,13 @@ function Hero({ onConnect, connected }: { onConnect: () => void; connected: bool
               <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-100 text-violet-600">
                 <WayfinderIcon />
               </span>
-              Wayfinder proposal
+              Wayfinder quote
             </div>
             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600">Awaiting review</span>
           </div>
-          <div className="mt-3 text-xl font-semibold text-slate-900">Move 500 USDC</div>
+          <div className="mt-3 text-xl font-semibold text-slate-900">Swap 1.2 USDC</div>
           <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-            <ChainDot color="#0052FF" /> Base <ArrowRightSmall /> <ChainDot color="#28A0F0" /> Arbitrum
+            USDC <ArrowRightSmall /> WETH · Ethereum mainnet
           </div>
         </FloatCard>
 
@@ -97,7 +91,7 @@ function Hero({ onConnect, connected }: { onConnect: () => void; connected: bool
             </span>
             <div>
               <div className="text-xs font-medium text-slate-700">0x7770…51f8</div>
-              <div className="text-[11px] text-emerald-600">● Sepolia · Verified</div>
+              <div className="text-[11px] text-emerald-600">● Mainnet · Confirmed</div>
             </div>
           </div>
         </FloatCard>
@@ -138,10 +132,10 @@ function FloatCard({ children, className = "" }: { children: React.ReactNode; cl
 const INTEGRATIONS = [
   { name: "Wayfinder", color: "#a78bfa" },
   { name: "KeeperHub", color: GREEN },
-  { name: "Base", color: "#0052FF" },
-  { name: "Arbitrum", color: "#28A0F0" },
   { name: "Ethereum", color: "#8C8C8C" },
-  { name: "Sepolia", color: "#f59e0b" },
+  { name: "Uniswap", color: "#FF007A" },
+  { name: "Curve", color: "#3465A4" },
+  { name: "Balancer", color: "#1E1E1E" },
 ];
 
 function IntegrationStrip() {
@@ -170,24 +164,24 @@ function IntegrationStrip() {
 const TABS = [
   {
     key: "propose",
-    label: "Proposal",
+    label: "Quote",
     icon: <DocIcon />,
-    heading: "Wayfinder proposes the exact move",
-    body: "Every action, contract, amount and chain is laid out in plain view before anything is signed or sent — no black-box agent behavior.",
+    heading: "Wayfinder finds the exact route",
+    body: "Every action, contract, and amount is decoded and laid out in plain view before anything is signed or sent — no black-box agent behavior.",
   },
   {
     key: "verify",
-    label: "Simulation",
+    label: "Verify",
     icon: <ShieldIcon />,
-    heading: "KeeperHub dry-runs it first",
-    body: "The workflow is simulated against live chain state. Every check — contract verification, balances, slippage, calldata — has to pass before you can approve.",
+    heading: "Checked against live chain state",
+    body: "The router is checked against a verified allowlist, your real on-chain allowance is read directly, and an approval-hash is computed over exactly what you're about to approve.",
   },
   {
     key: "execute",
     label: "Execution",
     icon: <BoltIcon />,
     heading: "Execution matches the review, exactly",
-    body: "Once you approve, KeeperHub executes precisely the workflow you reviewed. Nothing is regenerated or reinterpreted between approval and execution.",
+    body: "Immediately before execution, that hash is recomputed against what's actually stored in KeeperHub — if anything changed since you approved it, execution is refused automatically.",
   },
 ];
 
@@ -243,13 +237,13 @@ function ApprovalSection() {
       <div className="w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_25px_55px_-20px_rgba(15,23,42,0.2)]">
         <div className="flex items-center justify-between text-xs text-slate-400">
           <span>Workflow review</span>
-          <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-600">Simulation passed</span>
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-600">Route verified</span>
         </div>
-        <div className="mt-3 text-base font-semibold text-slate-900">Move 500 USDC · Base → Arbitrum</div>
+        <div className="mt-3 text-base font-semibold text-slate-900">Swap 1.2 USDC · USDC → WETH</div>
         <div className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-xs">
-          <Row label="Contract" value="KeeperHub Bridge Router" />
-          <Row label="Amount" value="500.00 USDC" />
-          <Row label="Est. gas" value="0.00084 ETH" />
+          <Row label="Router" value="Verified router (Uniswap V3)" />
+          <Row label="Amount" value="1.2 USDC" />
+          <Row label="Network" value="Ethereum mainnet" />
         </div>
         <div className="mt-5 flex gap-2">
           <span className="flex-1 rounded-lg border border-slate-200 py-2 text-center text-xs font-medium text-slate-500">Reject</span>
@@ -272,13 +266,13 @@ function VerifySection() {
           Every action <span className="text-emerald-600">verified</span> before it runs
         </>
       }
-      body="KeeperHub checks contract bytecode, routing, slippage and calldata against the exact proposal — catching a mismatched route or an unverified contract before you ever sign."
+      body="Mastra checks the router against a verified allowlist and reads your real on-chain allowance directly — catching a mismatched route or an unverified contract before you ever sign."
     >
       <div className="relative w-full max-w-sm">
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_25px_55px_-20px_rgba(15,23,42,0.2)]">
-          <div className="text-xs font-medium text-slate-400">KeeperHub simulation</div>
+          <div className="text-xs font-medium text-slate-400">Pre-execution checks</div>
           <div className="mt-3 space-y-2.5">
-            {["Bridge contract bytecode verified", "Route matches proposal exactly", "Slippage within bounds"].map((c) => (
+            {["Router address verified", "Real on-chain allowance checked", "Approval-hash matches exactly"].map((c) => (
               <div key={c} className="flex items-center gap-2 text-xs text-slate-600">
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                   <CheckIcon />
@@ -345,7 +339,7 @@ function ExecuteSection() {
           <div className="mt-3 text-sm font-semibold text-slate-900">Transaction Confirmed</div>
           <div className="mt-1 font-mono text-[11px] text-slate-400">0x630c0113…0d1eb6b7</div>
           <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-600">
-            <ChainDot color="#28A0F0" /> Arbitrum Sepolia
+            <ChainDot color="#8C8C8C" /> Ethereum Mainnet
           </div>
         </div>
       </div>
@@ -355,7 +349,7 @@ function ExecuteSection() {
 
 /* --------------------------------- CTA ----------------------------------- */
 
-function CtaBanner({ onConnect, connected }: { onConnect: () => void; connected: boolean }) {
+function CtaBanner({ onConnect }: { onConnect: () => void }) {
   return (
     <section className="px-4 py-16 sm:px-8">
       <div className="mx-auto max-w-5xl rounded-[32px] bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 px-8 py-14 text-center">
@@ -363,13 +357,13 @@ function CtaBanner({ onConnect, connected }: { onConnect: () => void; connected:
           Start verifying your agent&apos;s next move
         </h2>
         <p className="mx-auto mt-3 max-w-sm text-sm text-emerald-50/90">
-          Connect a wallet to see Mastra&apos;s next Wayfinder proposal, KeeperHub simulation, and execution.
+          A real Wayfinder route, verified and executed on Ethereum mainnet — reviewed before it runs.
         </p>
         <button
           onClick={onConnect}
           className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-emerald-700 transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
-          {connected ? "Go to Dashboard" : "Connect Wallet"}
+          Go to Swap
           <ArrowIcon />
         </button>
       </div>
@@ -400,10 +394,9 @@ function Footer() {
           <FooterColumn
             title="Product"
             links={[
-              { label: "Dashboard", href: "/dashboard" },
-              { label: "Workflow Review", href: "/workflow" },
-              { label: "Execution", href: "/execution" },
+              { label: "Swap", href: "/swap" },
               { label: "Audit Trail", href: "/audit" },
+              { label: "Mastra AI", href: "/ai" },
             ]}
           />
           <FooterColumn title="Ecosystem" links={[{ label: "Wayfinder", href: "#" }, { label: "KeeperHub", href: "#" }]} />

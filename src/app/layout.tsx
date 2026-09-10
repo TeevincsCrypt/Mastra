@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import { Providers } from "@/components/Providers";
-import { WalletProposalSync } from "@/components/WalletProposalSync";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,7 +27,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <Providers>
-          <WalletProposalSync />
           <Nav />
           <main className="flex-1">{children}</main>
         </Providers>
