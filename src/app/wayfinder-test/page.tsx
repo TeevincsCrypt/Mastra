@@ -33,6 +33,11 @@ export default function WayfinderTestPage() {
   const [diagnoseResult, setDiagnoseResult] = useState<unknown>(null);
   const [diagnoseError, setDiagnoseError] = useState<string | null>(null);
 
+  const [prepareAmount, setPrepareAmount] = useState("1.2");
+  const [prepareLoading, setPrepareLoading] = useState(false);
+  const [prepareResult, setPrepareResult] = useState<unknown>(null);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+
   async function runQuote() {
     setLoading(true);
     setError(null);
@@ -99,6 +104,29 @@ export default function WayfinderTestPage() {
       setDiagnoseError(err instanceof Error ? err.message : "Request failed.");
     } finally {
       setDiagnoseLoading(false);
+    }
+  }
+
+  async function runPrepare() {
+    setPrepareLoading(true);
+    setPrepareError(null);
+    setPrepareResult(null);
+    try {
+      const res = await fetch("/api/keeperhub/prepare-mainnet-swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromToken: "usd-coin-ethereum", toToken: "weth-ethereum", amount: prepareAmount }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setPrepareError(JSON.stringify(data, null, 2));
+      } else {
+        setPrepareResult(data);
+      }
+    } catch (err) {
+      setPrepareError(err instanceof Error ? err.message : "Request failed.");
+    } finally {
+      setPrepareLoading(false);
     }
   }
 
@@ -307,6 +335,49 @@ export default function WayfinderTestPage() {
         {diagnoseResult != null && (
           <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
             {JSON.stringify(diagnoseResult, null, 2)}
+          </pre>
+        )}
+      </div>
+
+      <div className="mt-10 border-t border-danger/40 pt-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-danger">
+          Phase B — creates a real workflow, still never executes
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Prepare real mainnet swap</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Real quote → decode → on-chain allowance check (read-only) → conditionally build{" "}
+          <code className="font-mono">approve</code> + <code className="font-mono">execute</code> → creates the real
+          KeeperHub workflow → computes the approval-hash security plan. This still never calls KeeperHub&apos;s{" "}
+          <code className="font-mono">execute(workflowId)</code> — nothing is signed or broadcast.
+        </p>
+
+        <div className="card mt-4 flex flex-col gap-3 p-5">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Amount (USDC)
+            <input
+              value={prepareAmount}
+              onChange={(e) => setPrepareAmount(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <button
+            onClick={runPrepare}
+            disabled={prepareLoading}
+            className="w-fit rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {prepareLoading ? "Requesting…" : "Prepare (creates workflow, does not execute)"}
+          </button>
+        </div>
+
+        {prepareError && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-danger/30 bg-danger-dim p-4 text-xs text-danger">
+            {prepareError}
+          </pre>
+        )}
+
+        {prepareResult != null && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
+            {JSON.stringify(prepareResult, null, 2)}
           </pre>
         )}
       </div>
