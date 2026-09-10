@@ -33,10 +33,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Only an authorized executor can lift the pause." }, { status: 403 });
   }
 
-  const state = setPaused(body.paused, caller);
-  recordAuditEvent({
-    type: body.paused ? "SYSTEM_PAUSED" : "SYSTEM_RESUMED",
-    message: body.paused ? `All automation execution paused by ${caller}.` : `Automation execution resumed by ${caller}.`,
-  });
-  return NextResponse.json({ ok: true, ...state });
+  try {
+    const state = setPaused(body.paused, caller);
+    recordAuditEvent({
+      type: body.paused ? "SYSTEM_PAUSED" : "SYSTEM_RESUMED",
+      message: body.paused ? `All automation execution paused by ${caller}.` : `Automation execution resumed by ${caller}.`,
+    });
+    return NextResponse.json({ ok: true, ...state });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Failed to change system state." }, { status: 500 });
+  }
 }

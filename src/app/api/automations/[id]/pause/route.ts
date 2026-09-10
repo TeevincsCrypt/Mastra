@@ -16,7 +16,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: false, error: "Only the automation's creator can pause it." }, { status: 403 });
   }
 
-  const updated = updateAutomation(id, { status: "paused" });
-  recordAuditEvent({ automationId: id, type: "AUTOMATION_PAUSED", message: `Paused by ${caller}.` });
-  return NextResponse.json({ ok: true, automation: updated });
+  try {
+    const updated = updateAutomation(id, { status: "paused" });
+    recordAuditEvent({ automationId: id, type: "AUTOMATION_PAUSED", message: `Paused by ${caller}.` });
+    return NextResponse.json({ ok: true, automation: updated });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Failed to pause automation." }, { status: 500 });
+  }
 }

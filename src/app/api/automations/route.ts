@@ -47,44 +47,51 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "name, fromToken, toToken and amount are required." }, { status: 400 });
   }
 
-  const automation = createAutomation({
-    ownerAddress: caller,
-    name: body.name,
-    description: body.description ?? "",
-    type: body.type ?? "custom",
-    status: "policy_review",
-    fromToken: body.fromToken,
-    toToken: body.toToken,
-    amount: body.amount,
-    frequency: body.frequency ?? "manual",
-    triggerDescription: body.triggerDescription ?? "Manually triggered from the Execution Center.",
-    triggerLive: body.triggerLive ?? true,
-    policyId: "", // set below once the policy exists
-  });
+  try {
+    const automation = createAutomation({
+      ownerAddress: caller,
+      name: body.name,
+      description: body.description ?? "",
+      type: body.type ?? "custom",
+      status: "policy_review",
+      fromToken: body.fromToken,
+      toToken: body.toToken,
+      amount: body.amount,
+      frequency: body.frequency ?? "manual",
+      triggerDescription: body.triggerDescription ?? "Manually triggered from the Execution Center.",
+      triggerLive: body.triggerLive ?? true,
+      policyId: "", // set below once the policy exists
+    });
 
-  const policy = createPolicy({
-    automationId: automation.id,
-    maxExecutionAmount: body.policy?.maxExecutionAmount ?? body.amount,
-    dailyLimitAmount: body.policy?.dailyLimitAmount ?? body.amount,
-    monthlyLimitAmount: body.policy?.monthlyLimitAmount ?? String(Number(body.amount) * 20),
-    allowedChains: DEFAULT_POLICY_DEFAULTS.allowedChains,
-    allowedInputTokens: [body.fromToken],
-    allowedOutputTokens: [body.toToken],
-    maxSlippageBps: body.policy?.maxSlippageBps ?? DEFAULT_POLICY_DEFAULTS.maxSlippageBps,
-    allowedRouters: DEFAULT_POLICY_DEFAULTS.allowedRouters,
-    requireFreshQuote: DEFAULT_POLICY_DEFAULTS.requireFreshQuote,
-    quoteExpirySeconds: DEFAULT_POLICY_DEFAULTS.quoteExpirySeconds,
-    requirePreflight: DEFAULT_POLICY_DEFAULTS.requirePreflight,
-    requireApprovalHash: DEFAULT_POLICY_DEFAULTS.requireApprovalHash,
-  });
+    const policy = createPolicy({
+      automationId: automation.id,
+      maxExecutionAmount: body.policy?.maxExecutionAmount ?? body.amount,
+      dailyLimitAmount: body.policy?.dailyLimitAmount ?? body.amount,
+      monthlyLimitAmount: body.policy?.monthlyLimitAmount ?? String(Number(body.amount) * 20),
+      allowedChains: DEFAULT_POLICY_DEFAULTS.allowedChains,
+      allowedInputTokens: [body.fromToken],
+      allowedOutputTokens: [body.toToken],
+      maxSlippageBps: body.policy?.maxSlippageBps ?? DEFAULT_POLICY_DEFAULTS.maxSlippageBps,
+      allowedRouters: DEFAULT_POLICY_DEFAULTS.allowedRouters,
+      requireFreshQuote: DEFAULT_POLICY_DEFAULTS.requireFreshQuote,
+      quoteExpirySeconds: DEFAULT_POLICY_DEFAULTS.quoteExpirySeconds,
+      requirePreflight: DEFAULT_POLICY_DEFAULTS.requirePreflight,
+      requireApprovalHash: DEFAULT_POLICY_DEFAULTS.requireApprovalHash,
+    });
 
-  const finalAutomation = updateAutomation(automation.id, { policyId: policy.id, status: "approved" })!;
+    const finalAutomation = updateAutomation(automation.id, { policyId: policy.id, status: "approved" })!;
 
-  recordAuditEvent({
-    automationId: automation.id,
-    type: "AUTOMATION_CREATED",
-    message: `Automation "${automation.name}" created by ${caller}. Policy: max ${policy.maxExecutionAmount} ${body.fromToken}/execution, ${policy.dailyLimitAmount}/day.`,
-  });
+    recordAuditEvent({
+      automationId: automation.id,
+      type: "AUTOMATION_CREATED",
+      message: `Automation "${automation.name}" created by ${caller}. Policy: max ${policy.maxExecutionAmount} ${body.fromToken}/execution, ${policy.dailyLimitAmount}/day.`,
+    });
 
-  return NextResponse.json({ ok: true, automation: finalAutomation, policy });
+    return NextResponse.json({ ok: true, automation: finalAutomation, policy });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? `Failed to persist automation: ${err.message}` : "Failed to persist automation." },
+      { status: 500 },
+    );
+  }
 }

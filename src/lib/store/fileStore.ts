@@ -1,6 +1,7 @@
 import "server-only";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 /**
  * Real, server-side JSON-file persistence. Not a mock — every read and
@@ -16,9 +17,16 @@ import { join } from "node:path";
  * function in lib/store/ is written against this same on-disk shape, so
  * swapping in a real database later means replacing this one file, not
  * the policy engine or the API routes that call it.
+ *
+ * Vercel's serverless functions run on a read-only filesystem everywhere
+ * except /tmp — writing under process.cwd() there throws (EROFS) on every
+ * call, which silently breaks every stateful route. Vercel sets VERCEL=1
+ * at both build and runtime, so that's used to route storage to /tmp in
+ * that environment while keeping data alongside the repo (.data/, easy to
+ * inspect) for local dev.
  */
 
-const DATA_DIR = join(process.cwd(), ".data");
+const DATA_DIR = process.env.VERCEL ? join(tmpdir(), "mastra-data") : join(process.cwd(), ".data");
 
 function ensureDir() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
