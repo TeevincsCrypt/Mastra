@@ -15,12 +15,12 @@ import { mainnet } from "viem/chains";
  */
 const RPC_URL = process.env.MAINNET_RPC_URL || "https://ethereum-rpc.publicnode.com";
 
-const publicClient = createPublicClient({
+export const publicClient = createPublicClient({
   chain: mainnet,
   transport: http(RPC_URL),
 });
 
-const ERC20_ALLOWANCE_ABI = [
+const ERC20_ABI = [
   {
     type: "function",
     name: "allowance",
@@ -31,13 +31,29 @@ const ERC20_ALLOWANCE_ABI = [
     ],
     outputs: [{ type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
 ] as const;
 
 export async function getErc20Allowance(tokenAddress: string, owner: string, spender: string): Promise<bigint> {
   return publicClient.readContract({
     address: tokenAddress as Address,
-    abi: ERC20_ALLOWANCE_ABI,
+    abi: ERC20_ABI,
     functionName: "allowance",
     args: [owner as Address, spender as Address],
+  });
+}
+
+export async function getErc20Balance(tokenAddress: string, owner: string): Promise<bigint> {
+  return publicClient.readContract({
+    address: tokenAddress as Address,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [owner as Address],
   });
 }

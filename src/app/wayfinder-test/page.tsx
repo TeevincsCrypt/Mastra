@@ -45,6 +45,12 @@ export default function WayfinderTestPage() {
   const [executeResult, setExecuteResult] = useState<unknown>(null);
   const [executeError, setExecuteError] = useState<string | null>(null);
 
+  const [forensicsTxHash, setForensicsTxHash] = useState("");
+  const [forensicsWorkflowId, setForensicsWorkflowId] = useState("");
+  const [forensicsLoading, setForensicsLoading] = useState(false);
+  const [forensicsResult, setForensicsResult] = useState<unknown>(null);
+  const [forensicsError, setForensicsError] = useState<string | null>(null);
+
   async function runQuote() {
     setLoading(true);
     setError(null);
@@ -158,6 +164,29 @@ export default function WayfinderTestPage() {
       setExecuteError(err instanceof Error ? err.message : "Request failed.");
     } finally {
       setExecuteLoading(false);
+    }
+  }
+
+  async function runForensics() {
+    setForensicsLoading(true);
+    setForensicsError(null);
+    setForensicsResult(null);
+    try {
+      const res = await fetch("/api/keeperhub/forensics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txHash: forensicsTxHash, workflowId: forensicsWorkflowId || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setForensicsError(JSON.stringify(data, null, 2));
+      } else {
+        setForensicsResult(data);
+      }
+    } catch (err) {
+      setForensicsError(err instanceof Error ? err.message : "Request failed.");
+    } finally {
+      setForensicsLoading(false);
     }
   }
 
@@ -469,6 +498,56 @@ export default function WayfinderTestPage() {
         {executeResult != null && (
           <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
             {JSON.stringify(executeResult, null, 2)}
+          </pre>
+        )}
+      </div>
+
+      <div className="mt-10 border-t border-border pt-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-muted">
+          Read-only forensics — no execute, enable, create, or send anywhere
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Analyze a mined transaction</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Fetches the real transaction + receipt, attempts a trace and a revert-reason replay, decodes the outer{" "}
+          <code className="font-mono">execute(bytes,bytes[])</code> call, and — if a workflow ID is given — compares
+          the decoded calldata byte-for-byte against what&apos;s actually persisted in KeeperHub.
+        </p>
+
+        <div className="card mt-4 flex flex-col gap-3 p-5">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Transaction hash
+            <input
+              value={forensicsTxHash}
+              onChange={(e) => setForensicsTxHash(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Workflow ID (optional, for byte-for-byte comparison)
+            <input
+              value={forensicsWorkflowId}
+              onChange={(e) => setForensicsWorkflowId(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <button
+            onClick={runForensics}
+            disabled={forensicsLoading || !forensicsTxHash}
+            className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {forensicsLoading ? "Analyzing…" : "Analyze (read-only)"}
+          </button>
+        </div>
+
+        {forensicsError && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-danger/30 bg-danger-dim p-4 text-xs text-danger">
+            {forensicsError}
+          </pre>
+        )}
+
+        {forensicsResult != null && (
+          <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface p-4 text-xs text-text-secondary">
+            {JSON.stringify(forensicsResult, null, 2)}
           </pre>
         )}
       </div>
