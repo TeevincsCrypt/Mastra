@@ -1,178 +1,271 @@
 # Mastra
 
-**Wayfinder × KeeperHub execution control center.**
+**Autonomous on-chain finance — a control plane, not a wallet.**
 
-Wayfinder thinks. Mastra verifies. KeeperHub executes.
+> "Give your agent a budget. Not your private key."
 
-Mastra sits between an autonomous agent that *proposes* on-chain workflows
-and the execution layer that *runs* them. Every proposal is shown in full
-before anything happens, checked against KeeperHub, and only executed after
-explicit human approval — with a permanent audit record of exactly what ran.
+Mastra sits between an agent that *proposes* on-chain actions and KeeperHub,
+the execution layer that *runs* them for real on Ethereum mainnet. In
+between sits a deterministic policy engine that decides — in code, not in an
+LLM's opinion — whether a proposed execution is allowed at all. The core
+rule this whole project is built around:
+
+**AI proposes. Policies decide. KeeperHub executes.**
+
+An agent that can call `execute()` directly, with nothing in between, is a
+live financial liability. Mastra's job is to be that boundary.
 
 ## What's real right now, and what isn't
 
 This matters more than the rest of the README, so it comes first.
 
-**Real:**
-- **KeeperHub preflight** (`GET /api/keeperhub/preflight`) — a genuine, server-side, API-key-authenticated call to `https://app.keeperhub.com/api/workflows/{id}` confirming the configured workflow actually exists on KeeperHub. It's called "preflight," not "simulation," because KeeperHub's documented API doesn't expose a transaction dry-run separate from execution — this is real validation, just not a dry-run.
-- **KeeperHub execution** (`POST` / `GET /api/keeperhub/execute`) — a genuine call to `POST /api/workflows/{id}/execute`, followed by polling `GET /api/workflows/{id}/executions` until the execution reaches a terminal state. The transaction hash shown in the UI comes from KeeperHub's `transactionHashes` field on that response — never generated locally. **Proven**: workflow `1f2xquu9elfdp1y4fje3g`, execution `v8blj68urln1zmwmwdncy`, real confirmed Sepolia transaction [`0x61dc1a128304a8918c3113ee514f20f89bf3d0ab71616ea1f512dd055ac1163d`](https://sepolia.etherscan.io/tx/0x61dc1a128304a8918c3113ee514f20f89bf3d0ab71616ea1f512dd055ac1163d), independently verified on Sepolia's explorer.
-- **Failure handling** — a missing API key, an unreachable KeeperHub, a failed workflow, or a polling timeout all surface as real "FAILED" states in the UI with the actual error message, not a silent fallback to fake success.
-- **Wallet connection** — real, via `wagmi` + `viem` (injected/MetaMask-style connector). Real connected address, real chain detection with a wrong-network prompt for anything but Sepolia, real disconnect, real connect/loading/error states. No address is ever generated or stored — see "Wallet architecture" below.
+**Real, and independently exercisable from the running app:**
 
-**Not real (and clearly labeled as such in the UI):**
-- **The Wayfinder proposal** ("Move 500 USDC from Base to Arbitrum") is Mastra's own representative workflow, generated locally in `src/lib/mock.ts`. This is not a stopgap waiting on an API key — see "Wayfinder integration status" below for why it's a genuine architectural gap. The Workflow Review screen says so explicitly, in a banner above the action list.
-- Because of that, the three-action bridge breakdown shown on Workflow Review (approve → bridge → receive, across Base/Arbitrum) is representative, not what actually executes. What actually executes is one small, pre-configured, real KeeperHub workflow on **Sepolia** — see `KEEPERHUB_WORKFLOW_ID` below. This is intentional: attempting a real cross-chain bridge as the first integration proof would not be a "smallest safe transaction."
+- **The deterministic policy engine** (`src/lib/policy/evaluate.ts`) — a
+  pure function, no LLM involved, checking chain, input/output token,
+  per-execution limit, daily budget, monthly budget, slippage, router
+  allowlist, and quote freshness. Test any amount against any automation's
+  real policy on the **Policies** page and see the exact check that passes
+  or fails.
+- **Real spending budgets** — derived entirely from persisted
+  `ExecutionRecord`s where `keeperhubExecuteCalled && status === "success"`
+  (`src/lib/store/executions.ts#sumSpentSince`). Never a separately-tracked
+  counter that could drift from what actually happened on-chain.
+- **Real Wayfinder quotes** via the official Wayfinder Paths SDK's MCP
+  server (`onchain_quote_swap`, `onchain_resolve_token`) — quote-only, never
+  signs or broadcasts. Exercise it live on the **Integrations** page.
+- **Real KeeperHub execution** on Ethereum mainnet — Mastra creates a
+  dynamic KeeperHub workflow matching the exact quoted route and calldata,
+  calls KeeperHub's real preflight and execute endpoints, and polls for the
+  real terminal state. The transaction hash, gas used, and execution ID
+  shown anywhere in the UI come directly from KeeperHub's own API response
+  — never generated or guessed locally.
+- **The approval-hash invariant** (`src/lib/approvalHash.ts`) — a SHA-256 of
+  the canonicalized approved proposal, recomputed immediately before
+  execution and compared; any mismatch blocks execution with
+  `APPROVAL INVALIDATED` rather than proceeding.
+- **A real, first-class blocked-execution state** — when policy rejects a
+  proposed amount, KeeperHub is never called (`keeperhubExecuteCalled:
+  false`). This is the demo's key feature, not an edge case: the agent does
+  not control the money.
+- **Real sign-in-with-wallet authentication** — a challenge message signed
+  by the connected wallet, verified server-side (viem's `verifyMessage`),
+  backing a stateless HMAC-signed session cookie. A connected MetaMask alone
+  proves nothing in this app; only a verified signature does.
+- **A real operator allowlist** (`MASTRA_AUTHORIZED_EXECUTORS`) gating the
+  one route that can actually spend from KeeperHub's shared wallet, and a
+  **real, server-side emergency pause** checked authoritatively inside the
+  execution path before any Wayfinder or KeeperHub call.
+- **A real, persisted audit trail** — every stage an execution passes
+  through (trigger received, quote requested, policy evaluated, KeeperHub
+  preflight, execution started, transaction confirmed, etc.) is written to
+  the file-backed store as it happens, visible on the **Audit** page.
 
-## KeeperHub integration architecture
+**Not real, and clearly labeled as such in the UI:**
+
+- **Automation triggers.** No automation in this build fires on a real
+  time/price/gas-threshold event. Every execution — including the four
+  strategy templates (ETH Auto-DCA, Gas Guardian, Take Profit Guardian,
+  Treasury Rebalancer) — is manually triggered from the Execution Center.
+  Each template's `triggerDescription` and `triggerLive: false` say this
+  explicitly; nothing pretends to be scheduled that isn't.
+- **Per-user custody.** Real execution still spends from KeeperHub's own
+  shared, operator-funded wallet, not a wallet unique to the person who
+  clicked Execute. The security boundary this build enforces is *who may
+  direct that spend and under what limits* (see Security model below) —
+  not custody itself. This is stated plainly on the Security page and the
+  landing page; the architecture is never described as non-custodial.
+- **USD-denominated amounts.** There's no live USD price feed wired in, so
+  every amount in this app is a token-native decimal (e.g. "1.2 USDC"),
+  never a fabricated dollar figure.
+- **Fund/vault isolation.** There's no per-automation on-chain vault or
+  audited isolation contract — that would require a real, audited contract
+  deployment, explicitly ruled out for this build. The policy engine is the
+  honest substitute: an off-chain, server-side boundary, not smart-contract
+  enforcement.
+
+## Architecture — five layers, one rule
+
+The full breakdown, cross-linked to the pages that back each claim with a
+live endpoint, lives at `/architecture` in the running app. Short version:
 
 ```
-Browser (Zustand store)
-  → fetch("/api/keeperhub/preflight" | "/api/keeperhub/execute")
-    → src/app/api/keeperhub/*/route.ts   (Next.js server routes, KEEPERHUB_API_KEY read here only)
-      → src/lib/keeperhub/client.ts      (thin fetch wrapper against https://app.keeperhub.com)
-        → real KeeperHub API
+User            → Identity only. Signs a challenge to prove who they are;
+                  never signs the execution transaction.
+Wayfinder       → Finds the route. Real quote + calldata via MCP.
+                  Never signs, never moves funds.
+Mastra          → The control plane. Automations, the deterministic policy
+                  engine, budgets, audit trail, sessions, emergency pause.
+                  Never holds a key, never calls the chain directly.
+KeeperHub       → The only thing that signs. Mastra asks it to execute a
+                  specific, policy-approved, quote-matched payload —
+                  nothing more.
+Blockchain      → Ethereum mainnet. The verified Universal Router at
+                  0xEbE0FA42523F69Ea1E97F5B08282654c19c2c0Ee, confirmed
+                  from real decoded transaction logs, not assumed from
+                  stock Uniswap docs.
 ```
 
-`KEEPERHUB_API_KEY` never reaches the browser — it's read with `process.env` only
-inside `src/lib/keeperhub/client.ts`, which is marked `import "server-only"` so
-a build fails loudly if anything ever tries to pull it into client code.
+The layer that decides is never the layer that signs.
 
-## Required environment variables
+## Execution lifecycle
 
-See `.env.example`. All server-side only — never prefixed `NEXT_PUBLIC_`.
-
-- `KEEPERHUB_API_KEY` — from app.keeperhub.com → Settings → API Keys → Organisation.
-- `KEEPERHUB_WORKFLOW_ID` — the id of a workflow you create yourself in the
-  KeeperHub dashboard: a small, safe, real action on Sepolia (e.g. a tiny
-  native transfer). Mastra executes exactly this workflow when you click
-  **Approve & Execute** — Mastra does not currently create workflows on your
-  behalf, since KeeperHub's exact workflow-creation JSON schema wasn't
-  confirmed against live documentation.
-- `WAYFINDER_API_KEY` — read only by `wayfinder-service` itself (its own
-  hosting platform's env vars), not by the Mastra app. Self-serve at
-  https://strategies.wayfinder.ai/.
-- `WAYFINDER_MCP_URL` — the URL of your deployed `wayfinder-service`. Not
-  yet wired into the main flow (see "Wayfinder integration status") — only
-  used by `/wayfinder-test` today.
-
-## Security invariant
-
-"The workflow KeeperHub executes must be exactly the workflow the user
-approved" — enforced, not just asserted. `src/lib/approvalHash.ts` computes
-a SHA-256 of the canonicalized (key-sorted) approved proposal the instant
-`Approve & Execute` is clicked; `store.ts`'s `approveAndExecute` recomputes
-that hash immediately before the actual execute call and compares. Any
-mismatch sets execution to `failed` with `APPROVAL INVALIDATED` rather than
-executing anything, and the hash is stored on every audit record
-(`approvedWorkflowHash`) so it's independently checkable later. With today's
-synchronous flow (approve and execute happen back-to-back against the same
-in-memory object) this can't yet actually diverge — it's real,
-tested-by-construction infrastructure for the moment there's a genuine gap
-between approval and execution, which is exactly what dynamic KeeperHub
-workflow creation (above) would introduce.
-
-## Wallet architecture
-
-The security model, confirmed by how KeeperHub's own API actually behaves
-(there is no wallet-signature step anywhere in its workflow-execution
-endpoints):
+An automation moves through `draft → policy_review → approved → deployed →
+active`. Triggering an execution (manually, from the Execution Center)
+walks a single run through:
 
 ```
-User connects real wallet (identity/authorization only)
-  → reviews the exact proposed workflow
-  → approves (their wallet address is recorded as the approver)
-  → KeeperHub executes through its own non-custodial execution wallet
-  → the transaction is signed and broadcast by KeeperHub, not the user
+TRIGGER_RECEIVED
+  → (blocked here if the system is paused)
+WAYFINDER_QUOTE_REQUESTED → QUOTE_RECEIVED
+POLICY_EVALUATION → POLICY_APPROVED | POLICY_BLOCKED
+  → (KeeperHub is never called past this point if blocked)
+KEEPERHUB_PREFLIGHT → APPROVAL_VERIFIED
+KEEPERHUB_EXECUTION_STARTED
+TRANSACTION_CONFIRMED | TRANSACTION_REVERTED
+EXECUTION_COMPLETE | EXECUTION_FAILED
 ```
 
-Mastra never invents a signature requirement that doesn't exist. The
-connected wallet's job in this build is exactly what Part 2 of this
-project's spec called for: identity and authorization, not transaction
-signing. The Workflow Review and Audit Trail screens both label the
-connected address explicitly as "identity only — not the executing wallet"
-so this distinction is never implied to be something it isn't.
+Every stage is written as a real `AuditEvent`, in order, as it happens
+(`src/lib/policy/runAutomationExecution.ts`).
 
-`src/lib/wagmi.ts` / `src/lib/useWallet.ts` — wagmi config (Sepolia only,
-injected connector only, no WalletConnect project id needed) and a thin
-hook exposing real connection/chain/error state to every screen.
+## Policy system
 
-## Wayfinder integration status
+Each `Automation` has exactly one `Policy` (`src/lib/store/types.ts`):
+max amount per execution, daily/monthly limits, allowed chains, allowed
+input/output tokens, max slippage (bps), an allowed-router list (defaulting
+to the one independently verified router), quote-freshness requirements,
+and whether preflight/approval-hash checks are required. `evaluatePolicy()`
+is pure and deterministic — same inputs, same decision, every time — and
+returns a full `PolicyDecision` with a pass/fail result for every
+individual check, not just a yes/no.
 
-Deeper research (reading the SDK's actual source, not just its docs)
-overturned the earlier conclusion that this was architecturally impossible.
-Current, accurate status:
+## Budget model
 
-**What's real and built:**
-- `wayfinder-service/` — a Dockerfile that runs the **official, unmodified**
-  `wayfinder_paths.mcp.server` in its own `streamable-http` transport mode
-  (a real, documented CLI option: `--transport streamable-http`), deployable
-  to any small persistent host (Railway/Render/Fly). See that directory's
-  own README for exact deploy steps.
-- `src/lib/wayfinder/client.ts` — a real, server-only MCP client
-  (`@modelcontextprotocol/sdk`) that connects to your deployed service and
-  calls the SDK's real `onchain_quote_swap` tool. It never calls
-  `onchain_swap` / `onchain_send` — those sign and broadcast internally
-  using a locally-held key (confirmed from the SDK's own source), which
-  would make Wayfinder a competing executor to KeeperHub. Wayfinder stays
-  the routing/decision layer only; KeeperHub remains the sole executor.
-- No private key anywhere in this integration. `onchain_quote_swap` needs a
-  `wallet_label` referencing a configured wallet, but the SDK's wallet
-  loader only requires `private_key_hex` inside the signing callback —
-  which quote calls never reach. `wayfinder-service/config.json` has one
-  watch-only entry (a placeholder address), nothing else.
-- `/api/wayfinder/quote` and a diagnostic page at `/wayfinder-test` —
-  reachable directly, not linked from the main nav — let you exercise a
-  real Wayfinder quote once `WAYFINDER_MCP_URL` is set, independent of the
-  main flow.
+Spend is computed by summing `requestedAmount` across every
+`ExecutionRecord` where `keeperhubExecuteCalled` is true and `status` is
+`"success"`, within the relevant window (`GET /api/budget`). A blocked or
+failed-before-execute attempt never counts — nothing moved on-chain, so it
+never should have moved against budget.
 
-**What's genuinely still blocked, and why:** wiring a real quote into
-Workflow Review's `Approve & Execute` would mean KeeperHub needs to execute
-a *dynamic* workflow matching that exact quote — not the fixed
-`KEEPERHUB_WORKFLOW_ID`. KeeperHub's real, documented workflow-creation
-schema (`POST /api/workflows/create`, `{name, nodes, edges}`, action type
-`web3/write-contract` confirmed with `{contractAddress, abi, abiFunction,
-functionArgs}`) needs a *decoded* ABI function call. A swap quote's
-calldata is very likely already-encoded raw transaction data from an
-aggregator contract. Neither the exact shape of Wayfinder's calldata output
-nor a KeeperHub action type that accepts raw (rather than decoded) calldata
-could be confirmed from available sources. Building past that would mean
-either guessing a translation, or silently substituting a simpler action
-than what was actually approved — both explicitly ruled out, the second one
-because it would violate the security invariant below. So: real quote data
-is obtainable and demonstrable via `/wayfinder-test` today; it is
-deliberately **not** wired into the main approve/execute flow, so the UI
-never shows a real proposal next to an execution that doesn't match it.
+## Security model
 
-## The flow
+Five layered, independently real checks — the full detail lives on the
+**Security** page in the running app:
 
-1. Connect a wallet
-2. Receive a workflow proposal (currently Mastra's representative one; Wayfinder-sourced once integrated)
-3. Mastra displays the exact workflow — every action, contract, amount and chain
-4. KeeperHub confirms the configured execution workflow is real and ready (real API call)
-5. You approve or reject
-6. KeeperHub executes that workflow for real, on Sepolia
-7. Mastra displays the real transaction hash from KeeperHub's response
-8. Every execution — success or failure — lands in an auditable history
+1. **Sign-in-with-wallet** — a signed challenge, verified server-side,
+   issues a session cookie. Never trust a client-supplied address alone.
+2. **Operator allowlist** (`MASTRA_AUTHORIZED_EXECUTORS`) — gates who can
+   trigger real spend or lift an emergency pause. Unset means any signed-in
+   wallet can execute — a disclosed gap, not a silent one.
+3. **Deterministic policy engine** — evaluated before KeeperHub is ever
+   called, every time.
+4. **Emergency pause** — server-side and authoritative, checked inside the
+   execution path itself, not just hidden behind a UI button.
+5. **KeeperHub as sole executor** — Mastra never holds or requests
+   KeeperHub's private key.
 
-## Screens
-
-- **Dashboard** — agent status, pending actions, recent executions
-- **Workflow Review** — every action, contract, amount, chain, and the real KeeperHub preflight result
-- **Execution** — live progress against the real KeeperHub execution, including real failure states
-- **Audit Trail** — complete history of approved/executed workflows, including KeeperHub workflow/execution IDs
-
-## Running locally
+## Local development
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in KEEPERHUB_API_KEY and KEEPERHUB_WORKFLOW_ID
+cp .env.example .env.local   # fill in what you need — see below
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Click **Connect Wallet**,
-then **Review Workflow** → **Run KeeperHub Preflight** → **Approve & Execute**
-to run the real flow against your configured Sepolia workflow.
+Open [http://localhost:3000](http://localhost:3000). `npm run build` and
+`npm run lint` should both be clean before pushing — this project treats
+lint/type errors as real bugs, not noise to route around.
 
-Without those two environment variables set, the app still runs end-to-end —
-preflight and execution will both report a real, honest failure explaining
-exactly what's missing, rather than fabricating a result.
+### Environment variables
+
+See `.env.example` for the full, current list with inline explanations.
+Highlights:
+
+- `MASTRA_SESSION_SECRET` — **required, no fallback.** The app throws on
+  boot without it. Signs session cookies; use a long random value.
+- `MASTRA_AUTHORIZED_EXECUTORS` — optional, comma-separated wallet
+  addresses allowed to trigger real execution or lift a pause.
+- `KEEPERHUB_API_KEY` — from app.keeperhub.com → Settings → API Keys.
+- `WAYFINDER_MCP_URL` — your deployed `wayfinder-service` (see that
+  directory's own README) — a persistent host running the official
+  Wayfinder Paths SDK's MCP server, since serverless functions can't run
+  one themselves.
+- `MAINNET_RPC_URL` — optional; falls back to a public no-API-key RPC.
+- `ANTHROPIC_API_KEY` — optional, powers the separate Mastra AI chat
+  assistant (`/ai`). Read automatically by the Anthropic SDK.
+
+All server-side only — none are ever prefixed `NEXT_PUBLIC_`.
+
+### Storage
+
+There is no provisioned database for this build. Persistence is a real,
+disclosed, file-backed JSON store (`src/lib/store/fileStore.ts`, data under
+`.data/`, gitignored) — a genuine architectural tradeoff for an environment
+with no database available, not a mock. On a serverless host without a
+persistent disk, this resets on cold start; note that when demoing on such
+a host.
+
+## Deployment
+
+Deployed on Vercel, tracking `main`. Set the environment variables above in
+the Vercel project settings (Production + Preview as needed). Because
+storage is file-backed, a Vercel deployment's persisted data does not
+survive across deployments/cold starts unless the hosting environment
+provides a persistent filesystem — this is a known limitation, not a bug,
+and is the honest tradeoff of not provisioning a real database for this
+build.
+
+## Mainnet setup
+
+Real execution runs on Ethereum mainnet — there is no silent fallback to a
+testnet. To exercise it for real you need:
+
+1. A KeeperHub account and API key with a funded execution wallet.
+2. `WAYFINDER_MCP_URL` pointing at a deployed `wayfinder-service`.
+3. `MASTRA_SESSION_SECRET` set, and optionally `MASTRA_AUTHORIZED_EXECUTORS`
+   restricting who can actually trigger a spend.
+
+Without KeeperHub/Wayfinder credentials configured, the app still runs
+end-to-end — every affected page reports a real, honest "not configured" or
+error state (see `/api/system/health`) rather than fabricating a result.
+
+## Known limitations
+
+- No automation fires on a real trigger event yet — every execution is
+  manual. See "What's real right now" above.
+- Not fully non-custodial — see "Security model" above.
+- No per-automation on-chain vault or fund isolation contract.
+- File-backed storage, not a provisioned database — see "Storage" above.
+- The `MASTRA_AUTHORIZED_EXECUTORS` allowlist is optional; if unset, any
+  signed-in wallet can trigger real spend.
+- The Mastra AI chat assistant (`/ai`) is informational only — it never
+  creates, approves, or executes an automation directly. Natural-language
+  automation creation is not wired into `/automations/new`; that flow uses
+  direct structured configuration instead, consistent with the project's
+  core rule that an LLM never executes directly.
+
+## Hackathon demo walkthrough
+
+1. **Architecture** (`/architecture`) — the five-layer split.
+2. **Overview** (`/overview`) — real system health, real automations, real
+   budget usage, all pulled from the same store and health checks the rest
+   of the app reads from.
+3. **Create an automation** (`/automations/new`) — pick a template or go
+   custom, set policy limits, sign in with your wallet, approve.
+4. **Policies** (`/policies`) — test an over-limit amount against the new
+   automation's real policy and watch it come back `BLOCKED`, with the
+   exact failing check.
+5. **Execute** (`/automations/[id]`) — trigger a real run within policy and
+   watch it walk through every real stage to a confirmed mainnet
+   transaction; trigger one over the limit and watch it stop at
+   `POLICY_BLOCKED` — **KeeperHub is never called.** The agent does not
+   control the money. Mastra controls the agent. KeeperHub executes only
+   what policy permits.
+6. **Integrations** (`/integrations`) — the real KeeperHub execution wallet
+   and its on-chain balances, recent real workflow executions, and a live
+   Wayfinder quote tester.
+7. **Security** (`/security`) — the real authorization model, and the
+   emergency pause toggle itself.
+8. **Audit** (`/audit`) — the full, real, server-side event trail for every
+   execution above.
