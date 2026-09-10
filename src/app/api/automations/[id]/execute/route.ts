@@ -22,7 +22,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const automation = getAutomation(id);
+  const automation = await getAutomation(id);
   if (!automation) {
     return NextResponse.json({ ok: false, error: "Automation not found." }, { status: 404 });
   }

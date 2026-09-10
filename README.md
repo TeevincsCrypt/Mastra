@@ -199,12 +199,25 @@ All server-side only — none are ever prefixed `NEXT_PUBLIC_`.
 
 ### Storage
 
-There is no provisioned database for this build. Persistence is a real,
-disclosed, file-backed JSON store (`src/lib/store/fileStore.ts`, data under
-`.data/`, gitignored) — a genuine architectural tradeoff for an environment
-with no database available, not a mock. On a serverless host without a
-persistent disk, this resets on cold start; note that when demoing on such
-a host.
+Persistence (`src/lib/store/fileStore.ts`) has two real backends:
+
+- **Redis** (Upstash) when `KV_REST_API_URL`/`KV_REST_API_TOKEN` (or
+  `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`) are set — real,
+  shared state across every serverless instance. **Required for Vercel** —
+  add a free Upstash Redis database from the Vercel dashboard's Storage tab
+  (Marketplace → Upstash for Redis); it auto-injects the env vars on
+  redeploy, no code change needed.
+- **A local JSON file** (`.data/`, gitignored) otherwise — used for local
+  dev, where one long-running process doesn't have a cross-instance
+  problem.
+
+Without Redis configured, Vercel deployments fall back to writing under
+`/tmp` (writable there, unlike `process.cwd()`) so the app doesn't crash —
+but `/tmp` is **not shared across serverless instances and doesn't survive
+a cold start**, so an automation created in one request can come back
+"not found" in the next. This is the actual cause if you see that error on
+a deployment without Redis configured — add it rather than working around
+it.
 
 ## Deployment
 
@@ -236,7 +249,9 @@ error state (see `/api/system/health`) rather than fabricating a result.
   manual. See "What's real right now" above.
 - Not fully non-custodial — see "Security model" above.
 - No per-automation on-chain vault or fund isolation contract.
-- File-backed storage, not a provisioned database — see "Storage" above.
+- Redis-backed when configured (see "Storage" above), but still a simple
+  whole-collection key-value store, not a relational database — fine at
+  this data volume, not built to scale past it.
 - The `MASTRA_AUTHORIZED_EXECUTORS` allowlist is optional; if unset, any
   signed-in wallet can trigger real spend.
 - The Mastra AI chat assistant (`/ai`) is informational only — it never

@@ -24,19 +24,19 @@ function startOfMonth(now: number): number {
  * are token-native, not a fabricated USD total — see store/types.ts.
  */
 export async function GET() {
-  const automations = listAutomations();
+  const automations = await listAutomations();
   const now = Date.now();
   const byToken = new Map<string, { allocatedDaily: number; allocatedMonthly: number; spentToday: number; spentThisMonth: number; automations: number }>();
 
   for (const automation of automations) {
-    const policy = getPolicy(automation.policyId);
+    const policy = await getPolicy(automation.policyId);
     if (!policy) continue;
     const token = automation.fromToken;
     const entry = byToken.get(token) ?? { allocatedDaily: 0, allocatedMonthly: 0, spentToday: 0, spentThisMonth: 0, automations: 0 };
     entry.allocatedDaily += Number(policy.dailyLimitAmount) || 0;
     entry.allocatedMonthly += Number(policy.monthlyLimitAmount) || 0;
-    entry.spentToday += sumSpentSince([automation.id], startOfDay(now));
-    entry.spentThisMonth += sumSpentSince([automation.id], startOfMonth(now));
+    entry.spentToday += await sumSpentSince([automation.id], startOfDay(now));
+    entry.spentThisMonth += await sumSpentSince([automation.id], startOfMonth(now));
     entry.automations += 1;
     byToken.set(token, entry);
   }

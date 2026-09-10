@@ -4,5 +4,5 @@ import { getSystemState } from "@/lib/store/systemState";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ ok: true, ...getSystemState() });
+  return NextResponse.json({ ok: true, ...(await getSystemState()) });
 }

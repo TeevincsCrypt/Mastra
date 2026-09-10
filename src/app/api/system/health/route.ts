@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/keeperhub/dynamicWorkflow";
-import { readCollection, writeCollection } from "@/lib/store/fileStore";
+import { readCollection, writeCollection, isRedisBacked } from "@/lib/store/fileStore";
 import { getSystemState } from "@/lib/store/systemState";
 
 export const dynamic = "force-dynamic";
@@ -43,14 +43,16 @@ export async function GET() {
   let storage: { status: Health; detail?: string } = { status: "offline" };
   try {
     const marker = `health-${Date.now()}`;
-    writeCollection("_health_check", [marker]);
-    const read = readCollection<string>("_health_check");
-    storage = read[0] === marker ? { status: "connected" } : { status: "degraded", detail: "Write/read mismatch." };
+    await writeCollection("_health_check", [marker]);
+    const read = await readCollection<string>("_health_check");
+    storage = read[0] === marker
+      ? { status: "connected", detail: isRedisBacked() ? "Redis (shared across instances)." : "Local file store (single-instance only)." }
+      : { status: "degraded", detail: "Write/read mismatch." };
   } catch (err) {
-    storage = { status: "offline", detail: err instanceof Error ? err.message : "File store unavailable." };
+    storage = { status: "offline", detail: err instanceof Error ? err.message : "Storage backend unavailable." };
   }
 
-  const system = getSystemState();
+  const system = await getSystemState();
 
   return NextResponse.json({
     ok: true,

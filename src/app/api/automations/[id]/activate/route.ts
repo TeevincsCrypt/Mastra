@@ -10,15 +10,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!caller) return NextResponse.json({ ok: false, error: "Sign in with your wallet first." }, { status: 401 });
 
   const { id } = await params;
-  const automation = getAutomation(id);
+  const automation = await getAutomation(id);
   if (!automation) return NextResponse.json({ ok: false, error: "Automation not found." }, { status: 404 });
   if (automation.ownerAddress.toLowerCase() !== caller.toLowerCase()) {
     return NextResponse.json({ ok: false, error: "Only the automation's creator can activate it." }, { status: 403 });
   }
 
   try {
-    const updated = updateAutomation(id, { status: "active" });
-    recordAuditEvent({ automationId: id, type: "AUTOMATION_ACTIVATED", message: `Activated by ${caller}.` });
+    const updated = await updateAutomation(id, { status: "active" });
+    await recordAuditEvent({ automationId: id, type: "AUTOMATION_ACTIVATED", message: `Activated by ${caller}.` });
     return NextResponse.json({ ok: true, automation: updated });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Failed to activate automation." }, { status: 500 });

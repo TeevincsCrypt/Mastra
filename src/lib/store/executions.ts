@@ -5,30 +5,30 @@ import type { ExecutionRecord } from "./types";
 
 const COLLECTION = "executions";
 
-export function listExecutions(automationId?: string): ExecutionRecord[] {
-  const all = readCollection<ExecutionRecord>(COLLECTION);
+export async function listExecutions(automationId?: string): Promise<ExecutionRecord[]> {
+  const all = await readCollection<ExecutionRecord>(COLLECTION);
   const filtered = automationId ? all.filter((e) => e.automationId === automationId) : all;
   return filtered.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function getExecution(id: string): ExecutionRecord | undefined {
-  return readCollection<ExecutionRecord>(COLLECTION).find((e) => e.id === id);
+export async function getExecution(id: string): Promise<ExecutionRecord | undefined> {
+  return (await readCollection<ExecutionRecord>(COLLECTION)).find((e) => e.id === id);
 }
 
-export function createExecution(input: Omit<ExecutionRecord, "id" | "createdAt">): ExecutionRecord {
+export async function createExecution(input: Omit<ExecutionRecord, "id" | "createdAt">): Promise<ExecutionRecord> {
   const record: ExecutionRecord = { ...input, id: randomUUID(), createdAt: Date.now() };
-  const all = readCollection<ExecutionRecord>(COLLECTION);
+  const all = await readCollection<ExecutionRecord>(COLLECTION);
   all.push(record);
-  writeCollection(COLLECTION, all);
+  await writeCollection(COLLECTION, all);
   return record;
 }
 
-export function updateExecution(id: string, patch: Partial<ExecutionRecord>): ExecutionRecord | undefined {
-  const all = readCollection<ExecutionRecord>(COLLECTION);
+export async function updateExecution(id: string, patch: Partial<ExecutionRecord>): Promise<ExecutionRecord | undefined> {
+  const all = await readCollection<ExecutionRecord>(COLLECTION);
   const idx = all.findIndex((e) => e.id === id);
   if (idx === -1) return undefined;
   all[idx] = { ...all[idx], ...patch, id: all[idx].id };
-  writeCollection(COLLECTION, all);
+  await writeCollection(COLLECTION, all);
   return all[idx];
 }
 
@@ -40,8 +40,8 @@ export function updateExecution(id: string, patch: Partial<ExecutionRecord>): Ex
  * moved), so it's excluded here — this must match what actually happened
  * on-chain, not what was merely attempted.
  */
-export function sumSpentSince(automationIds: string[], sinceMs: number): number {
-  const all = readCollection<ExecutionRecord>(COLLECTION);
+export async function sumSpentSince(automationIds: string[], sinceMs: number): Promise<number> {
+  const all = await readCollection<ExecutionRecord>(COLLECTION);
   return all
     .filter(
       (e) =>

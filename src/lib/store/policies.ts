@@ -16,28 +16,28 @@ export const DEFAULT_POLICY_DEFAULTS = {
   requireApprovalHash: true,
 };
 
-export function getPolicy(id: string): Policy | undefined {
-  return readCollection<Policy>(COLLECTION).find((p) => p.id === id);
+export async function getPolicy(id: string): Promise<Policy | undefined> {
+  return (await readCollection<Policy>(COLLECTION)).find((p) => p.id === id);
 }
 
-export function getPolicyForAutomation(automationId: string): Policy | undefined {
-  return readCollection<Policy>(COLLECTION).find((p) => p.automationId === automationId);
+export async function getPolicyForAutomation(automationId: string): Promise<Policy | undefined> {
+  return (await readCollection<Policy>(COLLECTION)).find((p) => p.automationId === automationId);
 }
 
-export function createPolicy(input: Omit<Policy, "id" | "createdAt" | "updatedAt">): Policy {
+export async function createPolicy(input: Omit<Policy, "id" | "createdAt" | "updatedAt">): Promise<Policy> {
   const now = Date.now();
   const policy: Policy = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
-  const all = readCollection<Policy>(COLLECTION);
+  const all = await readCollection<Policy>(COLLECTION);
   all.push(policy);
-  writeCollection(COLLECTION, all);
+  await writeCollection(COLLECTION, all);
   return policy;
 }
 
-export function updatePolicy(id: string, patch: Partial<Policy>): Policy | undefined {
-  const all = readCollection<Policy>(COLLECTION);
+export async function updatePolicy(id: string, patch: Partial<Policy>): Promise<Policy | undefined> {
+  const all = await readCollection<Policy>(COLLECTION);
   const idx = all.findIndex((p) => p.id === id);
   if (idx === -1) return undefined;
   all[idx] = { ...all[idx], ...patch, id: all[idx].id, updatedAt: Date.now() };
-  writeCollection(COLLECTION, all);
+  await writeCollection(COLLECTION, all);
   return all[idx];
 }

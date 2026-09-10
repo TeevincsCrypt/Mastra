@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "policyId, fromToken, toToken and amount are required." }, { status: 400 });
   }
 
-  const policy = getPolicy(body.policyId);
+  const policy = await getPolicy(body.policyId);
   if (!policy) return NextResponse.json({ ok: false, error: "Policy not found." }, { status: 404 });
 
   const now = Date.now();
@@ -62,8 +62,8 @@ export async function POST(request: Request) {
     routerAddress: body.routerAddress ?? VERIFIED_ROUTER_ADDRESS,
     slippageBps: body.slippageBps ?? 50,
     quoteFetchedAt: now,
-    spentTodayAmount: automationIds.length ? sumSpentSince(automationIds, startOfDay(now)) : 0,
-    spentThisMonthAmount: automationIds.length ? sumSpentSince(automationIds, startOfMonth(now)) : 0,
+    spentTodayAmount: automationIds.length ? await sumSpentSince(automationIds, startOfDay(now)) : 0,
+    spentThisMonthAmount: automationIds.length ? await sumSpentSince(automationIds, startOfMonth(now)) : 0,
   });
 
   return NextResponse.json({ ok: true, decision });

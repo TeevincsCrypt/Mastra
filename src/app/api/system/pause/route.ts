@@ -34,8 +34,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const state = setPaused(body.paused, caller);
-    recordAuditEvent({
+    const state = await setPaused(body.paused, caller);
+    await recordAuditEvent({
       type: body.paused ? "SYSTEM_PAUSED" : "SYSTEM_RESUMED",
       message: body.paused ? `All automation execution paused by ${caller}.` : `Automation execution resumed by ${caller}.`,
     });

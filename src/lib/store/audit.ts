@@ -5,8 +5,8 @@ import type { AuditEvent } from "./types";
 
 const COLLECTION = "audit_events";
 
-export function listAuditEvents(filter?: { automationId?: string; executionId?: string }): AuditEvent[] {
-  const all = readCollection<AuditEvent>(COLLECTION);
+export async function listAuditEvents(filter?: { automationId?: string; executionId?: string }): Promise<AuditEvent[]> {
+  const all = await readCollection<AuditEvent>(COLLECTION);
   const filtered = all.filter((e) => {
     if (filter?.automationId && e.automationId !== filter.automationId) return false;
     if (filter?.executionId && e.executionId !== filter.executionId) return false;
@@ -15,10 +15,10 @@ export function listAuditEvents(filter?: { automationId?: string; executionId?: 
   return filtered.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export function recordAuditEvent(input: Omit<AuditEvent, "id" | "timestamp">): AuditEvent {
+export async function recordAuditEvent(input: Omit<AuditEvent, "id" | "timestamp">): Promise<AuditEvent> {
   const event: AuditEvent = { ...input, id: randomUUID(), timestamp: Date.now() };
-  const all = readCollection<AuditEvent>(COLLECTION);
+  const all = await readCollection<AuditEvent>(COLLECTION);
   all.push(event);
-  writeCollection(COLLECTION, all);
+  await writeCollection(COLLECTION, all);
   return event;
 }

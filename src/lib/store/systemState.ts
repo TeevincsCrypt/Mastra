@@ -10,12 +10,12 @@ const DEFAULT_STATE: SystemState = { paused: false };
  * route checks this before ever calling Wayfinder or KeeperHub — not a
  * client-side flag, not a disabled button. See /api/automations/[id]/execute.
  */
-export function getSystemState(): SystemState {
+export async function getSystemState(): Promise<SystemState> {
   return readSingleton<SystemState>(KEY, DEFAULT_STATE);
 }
 
-export function setPaused(paused: boolean, by: string): SystemState {
+export async function setPaused(paused: boolean, by: string): Promise<SystemState> {
   const state: SystemState = paused ? { paused: true, pausedAt: Date.now(), pausedBy: by } : { paused: false };
-  writeSingleton(KEY, state);
+  await writeSingleton(KEY, state);
   return state;
 }

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   // Read-only — visible to anyone viewing the demo, no funds at risk.
-  return NextResponse.json({ ok: true, automations: listAutomations() });
+  return NextResponse.json({ ok: true, automations: await listAutomations() });
 }
 
 interface CreateBody {
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const automation = createAutomation({
+    const automation = await createAutomation({
       ownerAddress: caller,
       name: body.name,
       description: body.description ?? "",
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       policyId: "", // set below once the policy exists
     });
 
-    const policy = createPolicy({
+    const policy = await createPolicy({
       automationId: automation.id,
       maxExecutionAmount: body.policy?.maxExecutionAmount ?? body.amount,
       dailyLimitAmount: body.policy?.dailyLimitAmount ?? body.amount,
@@ -79,9 +79,9 @@ export async function POST(request: Request) {
       requireApprovalHash: DEFAULT_POLICY_DEFAULTS.requireApprovalHash,
     });
 
-    const finalAutomation = updateAutomation(automation.id, { policyId: policy.id, status: "approved" })!;
+    const finalAutomation = (await updateAutomation(automation.id, { policyId: policy.id, status: "approved" }))!;
 
-    recordAuditEvent({
+    await recordAuditEvent({
       automationId: automation.id,
       type: "AUTOMATION_CREATED",
       message: `Automation "${automation.name}" created by ${caller}. Policy: max ${policy.maxExecutionAmount} ${body.fromToken}/execution, ${policy.dailyLimitAmount}/day.`,

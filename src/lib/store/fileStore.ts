@@ -2,29 +2,36 @@ import "server-only";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Redis } from "@upstash/redis";
 
 /**
- * Real, server-side JSON-file persistence. Not a mock — every read and
- * write here actually hits disk and actually round-trips real data.
+ * Real, server-side persistence with two real backends, not a mock either
+ * way:
  *
- * Known, documented limitation: this project has no database and this
- * sandbox has no way to provision one. On a long-running process (local
- * `npm run dev`, or a single warm Vercel instance during a demo session)
- * this behaves like real durable storage. On serverless deployments across
- * multiple instances or after a cold start, the file is NOT guaranteed to
- * persist — each instance may see its own copy. This is a real, disclosed
- * constraint (see README "Known limitations"), not a hidden one. Every
- * function in lib/store/ is written against this same on-disk shape, so
- * swapping in a real database later means replacing this one file, not
- * the policy engine or the API routes that call it.
+ * 1. Redis (Upstash, via the Vercel Marketplace "Upstash" storage
+ *    integration or a raw Upstash database) when KV_REST_API_URL /
+ *    KV_REST_API_TOKEN (the Vercel-integration naming) or
+ *    UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN (raw Upstash
+ *    naming) are present. This is the real fix for Vercel: serverless
+ *    function instances don't share a filesystem and don't survive cold
+ *    starts, so file-based storage silently loses data across requests —
+ *    confirmed in production ("Automation not found" right after a
+ *    successful create). Redis is shared, real state across instances.
+ * 2. A JSON file on disk otherwise — for local dev, where a long-running
+ *    single process makes this behave like real durable storage. On
+ *    Vercel without a Redis integration configured, this still falls back
+ *    to /tmp (writable there, unlike process.cwd()) so the app doesn't
+ *    crash — but data still won't survive across instances/cold starts in
+ *    that fallback case. Configure Redis for anything beyond local dev.
  *
- * Vercel's serverless functions run on a read-only filesystem everywhere
- * except /tmp — writing under process.cwd() there throws (EROFS) on every
- * call, which silently breaks every stateful route. Vercel sets VERCEL=1
- * at both build and runtime, so that's used to route storage to /tmp in
- * that environment while keeping data alongside the repo (.data/, easy to
- * inspect) for local dev.
+ * Every function in lib/store/ is written against this same
+ * collection-of-JSON-documents shape, so callers never know which backend
+ * is live.
  */
+
+const REDIS_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const redis = REDIS_URL && REDIS_TOKEN ? new Redis({ url: REDIS_URL, token: REDIS_TOKEN }) : null;
 
 const DATA_DIR = process.env.VERCEL ? join(tmpdir(), "mastra-data") : join(process.cwd(), ".data");
 
@@ -36,7 +43,15 @@ function filePath(name: string): string {
   return join(DATA_DIR, `${name}.json`);
 }
 
-export function readCollection<T>(name: string): T[] {
+function redisKey(name: string): string {
+  return `mastra:${name}`;
+}
+
+export async function readCollection<T>(name: string): Promise<T[]> {
+  if (redis) {
+    const value = await redis.get<T[]>(redisKey(name));
+    return Array.isArray(value) ? value : [];
+  }
   ensureDir();
   const path = filePath(name);
   if (!existsSync(path)) return [];
@@ -50,8 +65,12 @@ export function readCollection<T>(name: string): T[] {
   }
 }
 
-/** Write-to-temp-then-rename for a bit of atomicity against a crash mid-write; does not solve concurrent-writer races across multiple serverless instances (a real DB would) — acceptable for a single-instance hackathon demo, documented above. */
-export function writeCollection<T>(name: string, items: T[]): void {
+/** Write-to-temp-then-rename for a bit of atomicity against a crash mid-write (file backend only); does not solve concurrent-writer races across multiple readers/writers either backend — acceptable for a single-writer-at-a-time hackathon demo, documented above. */
+export async function writeCollection<T>(name: string, items: T[]): Promise<void> {
+  if (redis) {
+    await redis.set(redisKey(name), items);
+    return;
+  }
   ensureDir();
   const path = filePath(name);
   const tmp = `${path}.tmp`;
@@ -59,7 +78,11 @@ export function writeCollection<T>(name: string, items: T[]): void {
   renameSync(tmp, path);
 }
 
-export function readSingleton<T>(name: string, fallback: T): T {
+export async function readSingleton<T>(name: string, fallback: T): Promise<T> {
+  if (redis) {
+    const value = await redis.get<T>(redisKey(name));
+    return value ?? fallback;
+  }
   ensureDir();
   const path = filePath(name);
   if (!existsSync(path)) return fallback;
@@ -71,10 +94,18 @@ export function readSingleton<T>(name: string, fallback: T): T {
   }
 }
 
-export function writeSingleton<T>(name: string, value: T): void {
+export async function writeSingleton<T>(name: string, value: T): Promise<void> {
+  if (redis) {
+    await redis.set(redisKey(name), value);
+    return;
+  }
   ensureDir();
   const path = filePath(name);
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
   renameSync(tmp, path);
+}
+
+export function isRedisBacked(): boolean {
+  return redis !== null;
 }
