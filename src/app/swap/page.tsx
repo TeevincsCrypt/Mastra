@@ -74,6 +74,36 @@ interface ExecuteResult {
   transactionHashes?: string[];
 }
 
+interface HistoryEntry {
+  timestamp: number;
+  amountUsdc: string;
+  status: "success" | "reverted" | "failed";
+  txHash?: string;
+  workflowId?: string;
+  error?: string;
+}
+
+const HISTORY_KEY = "mastra-swap-history";
+const HISTORY_LIMIT = 20;
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(entries: HistoryEntry[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_LIMIT)));
+  } catch {
+    // Best-effort — history is a convenience, not required for the swap itself.
+  }
+}
+
 type Stage = "form" | "preparing" | "prepared" | "executing" | "success" | "error";
 
 export default function SwapPage() {
@@ -89,6 +119,15 @@ export default function SwapPage() {
   const [walletState, setWalletState] = useState<WalletState | null>(null);
   const [walletStateLoading, setWalletStateLoading] = useState(true);
   const [balancesBefore, setBalancesBefore] = useState<WalletState | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>(() => (typeof window === "undefined" ? [] : loadHistory()));
+
+  function recordHistory(entry: HistoryEntry) {
+    setHistory((prev) => {
+      const next = [entry, ...prev].slice(0, HISTORY_LIMIT);
+      saveHistory(next);
+      return next;
+    });
+  }
 
   async function loadWalletState() {
     try {
@@ -154,24 +193,48 @@ export default function SwapPage() {
         body: JSON.stringify({ workflowId: prepared.keeperhubWorkflowId, approvedHash: prepared.approvalHash }),
       });
       const data = await res.json();
-      // KeeperHub can return HTTP 200 with ok:true even when the workflow
-      // itself reverted on-chain — ok:true only means the API call worked,
-      // not that the swap succeeded. status must be checked separately.
-      if (!res.ok || !data.ok || data.status !== "success") {
-        setErrorDetail(
-          data.error ??
-            `The swap did not succeed (KeeperHub status: "${data.status ?? "unknown"}"). This was a real on-chain attempt — gas was spent, but the swap itself reverted.`,
-        );
+      const amountUsdc = formatUnits(prepared.inputAmountRaw, USDC_DECIMALS);
+
+      if (!res.ok || !data.ok) {
+        // Request-level failure (approval invalidated, KeeperHub API error,
+        // poll timeout) — no on-chain execution result exists to show.
+        setErrorDetail(data.error ?? "Execution failed.");
         setStage("error");
+        recordHistory({ timestamp: Date.now(), amountUsdc, status: "failed", workflowId: prepared.keeperhubWorkflowId, error: data.error });
         loadWalletState();
         return;
       }
+
+      // KeeperHub can return HTTP 200 with ok:true even when the workflow
+      // itself reverted on-chain — ok:true only means the API call worked,
+      // not that the swap succeeded. status must be checked separately.
+      // Either way, a real execution ran and data carries the real tx hash,
+      // so it's kept and shown regardless of outcome.
       setExecuted(data);
-      setStage("success");
+      const txHash = data.transactionHashes?.[0];
+
+      if (data.status === "success") {
+        setStage("success");
+        recordHistory({ timestamp: Date.now(), amountUsdc, status: "success", txHash, workflowId: prepared.keeperhubWorkflowId });
+      } else {
+        setErrorDetail(
+          `The swap did not succeed (KeeperHub status: "${data.status ?? "unknown"}"). This was a real on-chain attempt — gas was spent, but the swap itself reverted.`,
+        );
+        setStage("error");
+        recordHistory({ timestamp: Date.now(), amountUsdc, status: "reverted", txHash, workflowId: prepared.keeperhubWorkflowId });
+      }
       loadWalletState();
     } catch (err) {
-      setErrorDetail(err instanceof Error ? err.message : "Request failed.");
+      const message = err instanceof Error ? err.message : "Request failed.";
+      setErrorDetail(message);
       setStage("error");
+      recordHistory({
+        timestamp: Date.now(),
+        amountUsdc: formatUnits(prepared.inputAmountRaw, USDC_DECIMALS),
+        status: "failed",
+        workflowId: prepared.keeperhubWorkflowId,
+        error: message,
+      });
     }
   }
 
@@ -322,17 +385,55 @@ export default function SwapPage() {
         )}
 
         {stage === "error" && (
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="max-w-md text-sm text-danger">{errorDetail}</p>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary">
+                {executed ? "Swap reverted on-chain" : "Could not execute"}
+              </span>
+              {executed && <StatusPill tone="danger" dot>{executed.status}</StatusPill>}
+            </div>
+
+            <p className="text-sm text-danger">{errorDetail}</p>
+
+            {executed?.transactionHashes?.[0] && (
+              <a
+                href={`https://etherscan.io/tx/${executed.transactionHashes[0]}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between rounded-lg border border-danger/30 bg-danger-dim px-4 py-3 text-sm font-medium text-danger hover:border-danger/50"
+              >
+                <span className="font-mono text-xs">{shortHash(executed.transactionHashes[0], 10, 8)}</span>
+                <span>View on Etherscan →</span>
+              </a>
+            )}
+
+            {prepared && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+                <Row label="Route attempted" value={describeCommands(prepared.securityPlan.commands)} />
+                <Row label="Workflow ID" value={prepared.keeperhubWorkflowId} mono />
+              </div>
+            )}
+
             <button
               onClick={reset}
-              className="rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-accent/50"
+              className="w-fit rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-accent/50"
             >
               Start over
             </button>
           </div>
         )}
       </div>
+
+      {history.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">Recent swaps (this browser)</h2>
+          <div className="card overflow-hidden">
+            {history.map((entry, i) => (
+              <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} last={i === history.length - 1} />
+            ))}
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }
@@ -344,6 +445,41 @@ function StatCard({ label, value, mono, loading }: { label: string; value: strin
       <div className={`mt-1 text-sm font-medium text-text-primary ${mono ? "font-mono" : ""}`}>
         {loading ? <span className="inline-block h-4 w-20 animate-pulse rounded bg-surface-hover" /> : value}
       </div>
+    </div>
+  );
+}
+
+function HistoryRow({ entry, last }: { entry: HistoryEntry; last?: boolean }) {
+  const tone = entry.status === "success" ? "success" : entry.status === "reverted" ? "danger" : "warning";
+  const label = entry.status === "success" ? "Success" : entry.status === "reverted" ? "Reverted" : "Failed";
+  const when = new Date(entry.timestamp).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm ${last ? "" : "border-b border-border"}`}>
+      <div className="flex items-center gap-3">
+        <StatusPill tone={tone} dot>{label}</StatusPill>
+        <span className="text-text-secondary">{entry.amountUsdc} USDC</span>
+        <span className="text-xs text-text-muted">{when}</span>
+      </div>
+      {entry.txHash ? (
+        <a
+          href={`https://etherscan.io/tx/${entry.txHash}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-xs text-accent-strong hover:underline"
+        >
+          {shortHash(entry.txHash, 6, 4)}
+        </a>
+      ) : (
+        <span className="max-w-xs truncate text-xs text-text-muted" title={entry.error}>
+          {entry.error ?? "—"}
+        </span>
+      )}
     </div>
   );
 }
