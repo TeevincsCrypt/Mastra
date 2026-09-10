@@ -62,6 +62,8 @@ export interface PreparedMainnetSwap {
   securityPlan: Record<string, unknown>;
   keeperhubWorkflow: unknown;
   keeperhubWorkflowId: string | undefined;
+  /** The raw Wayfinder execution_quote object for this attempt (whatever fields it actually contains — e.g. output_amount, if present). Passed through as-is rather than reshaped, so the caller never has to guess at a field name that may not exist. */
+  executionQuote: Record<string, unknown> | undefined;
 }
 
 export interface PreparedMainnetSwapFailure {
@@ -224,6 +226,7 @@ export async function prepareMainnetSwapWorkflow(params: {
         securityPlan,
         keeperhubWorkflow,
         keeperhubWorkflowId: typeof workflowRecord.id === "string" ? workflowRecord.id : undefined,
+        executionQuote,
       };
     } catch (err) {
       return {

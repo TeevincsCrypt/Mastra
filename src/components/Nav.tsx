@@ -7,6 +7,7 @@ import { useHydrated } from "@/lib/useHydrated";
 import { shortHash } from "@/lib/mock";
 
 const LINKS = [
+  { href: "/swap", label: "Swap (mainnet)" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/workflow", label: "Workflow Review" },
   { href: "/execution", label: "Execution" },
