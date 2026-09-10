@@ -34,6 +34,7 @@ export default function WayfinderTestPage() {
   const [diagnoseError, setDiagnoseError] = useState<string | null>(null);
 
   const [prepareAmount, setPrepareAmount] = useState("1.2");
+  const [prepareSlippageBps, setPrepareSlippageBps] = useState("50");
   const [prepareLoading, setPrepareLoading] = useState(false);
   const [prepareResult, setPrepareResult] = useState<unknown>(null);
   const [prepareError, setPrepareError] = useState<string | null>(null);
@@ -128,7 +129,12 @@ export default function WayfinderTestPage() {
       const res = await fetch("/api/keeperhub/prepare-mainnet-swap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromToken: "usd-coin-ethereum", toToken: "weth-ethereum", amount: prepareAmount }),
+        body: JSON.stringify({
+          fromToken: "usd-coin-ethereum",
+          toToken: "weth-ethereum",
+          amount: prepareAmount,
+          slippageBps: prepareSlippageBps ? Number(prepareSlippageBps) : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -417,6 +423,14 @@ export default function WayfinderTestPage() {
             <input
               value={prepareAmount}
               onChange={(e) => setPrepareAmount(e.target.value)}
+              className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            Slippage tolerance (bps — 50 = 0.5%, default). Both reverted attempts used the default 50.
+            <input
+              value={prepareSlippageBps}
+              onChange={(e) => setPrepareSlippageBps(e.target.value)}
               className="rounded-lg border border-border-strong bg-transparent px-3 py-2 text-sm text-text-primary"
             />
           </label>

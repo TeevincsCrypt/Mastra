@@ -76,6 +76,7 @@ export async function prepareMainnetSwapWorkflow(params: {
   fromToken: string;
   toToken: string;
   amount: string;
+  slippageBps?: number;
 }): Promise<PreparedMainnetSwap | PreparedMainnetSwapFailure> {
   let executionWallet: string;
   try {

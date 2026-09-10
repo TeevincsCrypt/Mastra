@@ -16,6 +16,7 @@ interface RequestBody {
   fromToken?: string;
   toToken?: string;
   amount?: string;
+  slippageBps?: number;
 }
 
 export async function POST(request: Request) {
@@ -29,7 +30,8 @@ export async function POST(request: Request) {
   const fromToken = body.fromToken ?? "usd-coin-ethereum";
   const toToken = body.toToken ?? "weth-ethereum";
   const amount = body.amount ?? "1.2";
+  const slippageBps = typeof body.slippageBps === "number" ? body.slippageBps : undefined;
 
-  const result = await prepareMainnetSwapWorkflow({ fromToken, toToken, amount });
+  const result = await prepareMainnetSwapWorkflow({ fromToken, toToken, amount, slippageBps });
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }
