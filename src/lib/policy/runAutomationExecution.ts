@@ -7,6 +7,7 @@ import { getPolicy } from "@/lib/store/policies";
 import { createExecution, updateExecution, sumSpentSince } from "@/lib/store/executions";
 import { recordAuditEvent } from "@/lib/store/audit";
 import { findToken } from "@/lib/tokens";
+import { isTerminalSuccess } from "@/lib/keeperhub/client";
 import type { ExecutionRecord, PolicyDecision } from "@/lib/store/types";
 
 /**
@@ -194,7 +195,11 @@ export async function runAutomationExecution(automationId: string, callerAddress
     }))!;
   }
 
-  const succeeded = executed.status === "success";
+  // isTerminalSuccess(), not a bare === "success" check — KeeperHub's own
+  // terminal-success statuses also include "succeeded"/"completed"/
+  // "confirmed"/"done" (see client.ts); an exact-string check would
+  // mislabel any of those as a revert.
+  const succeeded = isTerminalSuccess(executed.status);
   await recordAuditEvent({
     automationId,
     executionId: execution.id,
@@ -202,7 +207,14 @@ export async function runAutomationExecution(automationId: string, callerAddress
     message: succeeded
       ? `Transaction confirmed: ${executed.transactionHashes?.[0] ?? "(no hash returned)"}`
       : `KeeperHub reported status "${executed.status}" — the swap did not succeed on-chain.`,
-    metadata: { txHash: executed.transactionHashes?.[0], keeperhubExecutionId: executed.executionId },
+    // executed.raw is KeeperHub's full execution record (see
+    // KeeperHubExecution's index signature in client.ts) — its documented
+    // fields are only id/status/transactionHashes, but whatever error/
+    // reason field KeeperHub actually attaches to a failed execution lives
+    // somewhere in the rest of this object. Surfacing it here rather than
+    // just the status string is what actually explains a real revert/error
+    // instead of leaving it as an opaque "status: error".
+    metadata: { txHash: executed.transactionHashes?.[0], keeperhubExecutionId: executed.executionId, keeperhubExecution: succeeded ? undefined : executed.raw },
   });
 
   const final = (await updateExecution(execution.id, {

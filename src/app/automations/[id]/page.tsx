@@ -257,6 +257,7 @@ function ExecutionRow({ execution, last }: { execution: ExecutionRecord; last?: 
 
 function AuditRow({ event, last }: { event: AuditEvent; last?: boolean }) {
   const attemptsLog = Array.isArray(event.metadata?.attemptsLog) ? (event.metadata!.attemptsLog as Array<Record<string, unknown>>) : null;
+  const keeperhubExecution = event.metadata?.keeperhubExecution;
   return (
     <div className={`px-5 py-2.5 text-xs ${last ? "" : "border-b border-border"}`}>
       <div className="flex items-center justify-between">
@@ -279,6 +280,14 @@ function AuditRow({ event, last }: { event: AuditEvent; last?: boolean }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+      {keeperhubExecution != null && (
+        <div className="mt-1.5">
+          <div className="mb-0.5 text-[10px] text-text-muted">Full KeeperHub execution record:</div>
+          <pre className="max-h-48 overflow-auto rounded border border-border bg-surface px-2 py-1 text-[9px] leading-snug text-text-muted">
+            {JSON.stringify(keeperhubExecution, null, 1)}
+          </pre>
         </div>
       )}
     </div>
